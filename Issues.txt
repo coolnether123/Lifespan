@@ -1,0 +1,88 @@
+4. Type Safety Issues 🔴
+
+	// AgeContext enum is cast to int in events:
+	ModEventBus.Publish("Lifespan.CharacterAgeGenerated", 
+	    new CharacterAgeGeneratedArgs(character, ageWeeks, (int)context));
+	    
+	// Better: Pass AgeContext directly or use string keys
+
+5. Complex Probability Logic - Needs Testing
+
+	// CalculateStatGainChance is sophisticated but hard to verify:
+	// - Stress modifier: (1 - (2 * traumaNormalized))
+	// - Catch-up bonus: bonusPerPoint * remainingPotential * (windowYears - yearsTo + 1)
+	// - Time scaling: 1 - (1-p)^weeksAged
+	// No unit tests visible. Recommend:
+	
+	[Test]
+	public void StatGainChance_WithMaxStress_ReducesByMaxInfluence() { }
+	
+	[Test]
+	public void CatchUpBonus_IncreasesNearMilestone() { }
+
+6. Potential Runtime Issues 🔴
+
+
+Hair Transition:
+
+
+	// What if CachedMesh is destroyed mid-transition?
+	context.CachedMesh.SetColor(...);  // Could NPE here
+	// Suggest: Check if mesh still exists before calling
+	if (context.CachedMesh != null && context.CachedMesh.gameObject != null)
+
+Death Day Tracking:
+
+
+	// If death override is set but member doesn't die for some reason,
+	// the dict entry persists. Minor issue but could accumulate:
+	finally {
+	    AgingPatches.ClearDeathDayOverride(memberId); // Good!
+	}
+
+Party Cleanup:
+
+
+	// In radio death, assumes party exists - has fallback but logs error:
+	if (party != null) {
+	    ReflectionHelper.InvokeMethod(party, "RemoveDeadPartyMembers", false);
+	}
+	// What if RemoveDeadPartyMembers itself throws? Silently swallows.
+
+Performance Suggestions
+
+	// In UpdateHairTransitions - consider capping iterations:
+	for (int i = _activeTransitions.Count - 1; i >= 0; i--) {
+	    // This is O(n) every frame. With 20 family members, fine.
+	    // But if there are 100+ NPCs, could stall.
+	    // Consider: Frame budget system?
+	}
+	
+	// TooltipCache - could use WeakDictionary to auto-cleanup:
+	private static Dictionary<UI_CharacterTooltip, TooltipData> _cache
+	// When UI_CharacterTooltip is destroyed, entry should be removed
+
+Testing Recommendations
+
+	// Add unit tests for:
+	[TestClass]
+	public class DevelopmentGeneTests {
+	    [Test] public void GenerateRandom_ProducesValidPotentials() { }
+	    [Test] public void ForefeitPotential_CorrectlyMarksForfeited() { }
+	    [Test] public void GetRemainingPotential_AccountsForGains() { }
+	}
+	
+	[TestClass]
+	public class AgeTrackerTests {
+	    [Test] public void GenerateInitialAge_WithinBounds() { }
+	    [Test] public void IncrementAge_PersistsCorrectly() { }
+	}
+	
+	[TestClass]
+	public class DeathManagerTests {
+	    [Test] public void ProcessDeathRoll_WithMaxAge_AlwaysSchedulesDeath() { }
+	    [Test] public void DeathProbability_IncreasesPastElder() { }
+	}
+
+
+When integrating all of this make sure to follow Dry practices and SOLID. Single file responsibility. Tests should be setup to track averages in a certain amount of people dying and what age they live to. Etc. 

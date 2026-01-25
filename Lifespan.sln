@@ -1,0 +1,25 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.14.36301.6 d17.14
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Lifespan", "Lifespan\Lifespan.csproj", "{5AD5D9CB-75DB-409C-971C-D69C0A621B34}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{5AD5D9CB-75DB-409C-971C-D69C0A621B34}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5AD5D9CB-75DB-409C-971C-D69C0A621B34}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5AD5D9CB-75DB-409C-971C-D69C0A621B34}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5AD5D9CB-75DB-409C-971C-D69C0A621B34}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {15CA72E2-F9B1-4D2A-8A7F-A177101FF9BA}
+	EndGlobalSection
+EndGlobal
