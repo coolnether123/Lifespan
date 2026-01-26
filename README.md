@@ -1,7 +1,7 @@
 # Lifespan Mod for Sheltered
 **Created by coolnether123**
 
-A comprehensive aging system mod that brings realistic aging mechanics to Sheltered, progressing characters from childhood through adulthood and into old age. Now featuring full NPC support and an expanded API for inter-mod compatibility.
+A detailed aging system mod that brings realistic aging mechanics to Sheltered, progressing characters from childhood through adulthood and into old age. Now featuring full NPC support and an expanded API for inter-mod compatibility.
 
 ## Features
 
@@ -170,7 +170,7 @@ ModEventBus.Subscribe<BecameAdultEventArgs>("Lifespan.BecameAdult", args =>
 
 ## Credits
 
-Created using the Sheltered Mod Loader ModAPI v1.0.1
+Created using the Sheltered Mod Loader ModAPI v1.1
 
 ## License
 
