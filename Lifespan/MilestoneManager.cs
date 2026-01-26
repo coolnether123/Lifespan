@@ -175,8 +175,28 @@ namespace Lifespan
             }
         }
 
+        private FamilyMember GetObserver(FamilyMember excluded)
+        {
+            if (FamilyManager.Instance == null) return null;
+            var members = FamilyManager.Instance.GetAllFamilyMembers();
+            if (members == null) return null;
+
+            List<FamilyMember> candidates = new List<FamilyMember>();
+            foreach (var m in members)
+            {
+                if (m != null && !m.isDead && m != excluded)
+                    candidates.Add(m);
+            }
+
+            if (candidates.Count == 0) return null;
+            return candidates[_random.Next(candidates.Count)];
+        }
+
         private void TriggerAge5Milestone(FamilyMember member)
         {
+            var observer = GetObserver(member);
+            if (observer == null) return;
+
             int ageYears = _ageTracker.GetAgeWeeks(member) / 52;
             string[] lines = {
                 $"{member.firstName} is getting so big at {ageYears} years old.",
@@ -185,40 +205,49 @@ namespace Lifespan
                 "I can't believe how quickly they are growing.",
                 $"{member.firstName} has such curiosity about the world."
             };
-            TriggerSpeech(member, lines[_random.Next(lines.Length)]);
+            TriggerSpeech(observer, lines[_random.Next(lines.Length)]);
         }
 
         private void TriggerAge10Milestone(FamilyMember member)
         {
+            var observer = GetObserver(member);
+            if (observer == null) return;
+
             string[] lines = {
                 $"{member.firstName} is growing up. Ten years already.",
                 "Pretty soon they will be helping out more.",
                 $"{member.firstName} is developing real skills now.",
                 "It feels like they were just born, and now look at them at 10 years old."
             };
-            TriggerSpeech(member, lines[_random.Next(lines.Length)]);
+            TriggerSpeech(observer, lines[_random.Next(lines.Length)]);
         }
 
         private void TriggerAge15Milestone(FamilyMember member)
         {
+            var observer = GetObserver(member);
+            if (observer == null) return;
+
             string[] lines = {
                 $"{member.firstName} won't be a child much longer. 15 years already.",
                 "Time flies. They will be an adult before we know it.",
                 $"{member.firstName} is almost ready for the real world.",
                 "I barely recognize the 15 year old they are becoming."
             };
-            TriggerSpeech(member, lines[_random.Next(lines.Length)]);
+            TriggerSpeech(observer, lines[_random.Next(lines.Length)]);
         }
 
         private void TriggerFirstSkillMessage(FamilyMember member)
         {
+            var observer = GetObserver(member);
+            if (observer == null) return;
+
             string[] lines = {
                 $"{member.firstName} finally figured out how to use that tool!",
                 "Look at them go!",
                 $"{member.firstName} managed to complete a real task today.",
                 $"I am so proud of {member.firstName} for learning that."
             };
-            TriggerSpeech(member, lines[_random.Next(lines.Length)]);
+            TriggerSpeech(observer, lines[_random.Next(lines.Length)]);
         }
 
         private void TriggerElderPhilosophy(FamilyMember member)
