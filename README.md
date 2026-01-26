@@ -146,7 +146,7 @@ ModEventBus.Subscribe<BecameAdultEventArgs>("Lifespan.BecameAdult", args =>
 
 ## Installation
 
-1. Ensure Sheltered ModAPI v1.0.1 is installed
+1. Ensure Sheltered ModAPI v1.1 is installed from [here](https://github.com/coolnether123/shelteredmodmanager/releases/tag/v1.1)
 2. Copy the `Lifespan` folder to `Sheltered/mods/`
 3. Enable the mod in the Mod Manager
 4. **Recommended**: Configure your preferred aging speed in the Settings menu before starting a long playthrough.
