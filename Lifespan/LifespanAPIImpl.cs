@@ -65,7 +65,6 @@ namespace Lifespan
                 // Update ModSettings keys
                 _ctx.Settings.SetInt("adultAgeYears", _config.adultAgeYears);
                 _ctx.Settings.SetInt("elderAgeYears", _config.elderAgeYears);
-                _ctx.Settings.SetInt("maxAgeYears", _config.maxAgeYears);
                 
                 _ctx.Settings.SetInt("initialChildAgeYears", _config.initialChildAgeYears);
                 _ctx.Settings.SetInt("initialAdultAgeYears", _config.initialAdultAgeYears);
@@ -85,7 +84,6 @@ namespace Lifespan
                 _ctx.Settings.SetFloat("dementiaIntModifier", _config.dementiaIntModifier);
                 _ctx.Settings.SetFloat("arthritisSpeedModifier", _config.arthritisSpeedModifier);
                 _ctx.Settings.SetFloat("frailtyStrModifier", _config.frailtyStrModifier);
-                _ctx.Settings.SetFloat("heartDiseaseAttackChance", _config.heartDiseaseAttackChance);
                 _ctx.Settings.SetFloat("heartDiseaseAttackChance", _config.heartDiseaseAttackChance);
                 _ctx.Settings.SetFloat("heartAttackDamage", _config.heartAttackDamage);
 

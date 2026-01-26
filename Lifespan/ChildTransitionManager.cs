@@ -66,6 +66,18 @@ namespace Lifespan
                     UpdateStatCap(member.BaseStats.Perception, "perception");
                 }
 
+                // 6.5 Carry over leftover childhood potential
+                var gene = _ageTracker.GetOrGenerateDevelopmentGene(member);
+                if (gene != null)
+                {
+                    int oldPotential = gene.PostAdultPotential;
+                    gene.TransitionToAdult();
+                    if (gene.PostAdultPotential > oldPotential)
+                    {
+                        LifespanLoggerExtensions.Debug(_log, $"[ChildTransition] Carried over {gene.PostAdultPotential - oldPotential} points to adult potential for {member.firstName}.");
+                    }
+                }
+
                 // 7. Ensure character has at least TWO adult Strength traits
                 // Adults typically have 2 strengths. Without strengths to lose, characters 
                 // transition immediately to Catatonic on max trauma. With only 1 strength,

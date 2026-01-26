@@ -8,15 +8,21 @@ using ModAPI.Reflection;
 using ModAPI.Events;
 using UnityEngine;
 using HarmonyLib;
+using ModAPI.Spine; // Required for settings UI support
 
 namespace Lifespan
 {
-    public class LifespanPlugin : IModPlugin, IModShutdown, IModUpdate
+    /// <summary>
+    /// Main plugin entry point for the Lifespan mod.
+    /// Handles initialization, life cycle events, and settings integration.
+    /// </summary>
+    public class LifespanPlugin : IModPlugin, IModShutdown, IModUpdate, ISettingsProvider
     {
         private IPluginContext _ctx;
         private IModLogger _log;
         private LifespanConfig _config;
         private AgeTracker _ageTracker;
+        private MilestoneManager _milestoneManager; // Added
         private ChildTransitionManager _childManager;
         private ElderIllnessManager _illnessManager;
         private DeathManager _deathManager;
@@ -24,6 +30,8 @@ namespace Lifespan
         private LifespanAPIImpl _api;
         private Harmony _harmony;
         private DebugManager _debugManager;
+        private DialogueScheduler _dialogueScheduler;
+        private List<SettingDefinition> _cachedDefinitions;
 
         public ILifespanAPI Api => _api;
         
@@ -42,10 +50,15 @@ namespace Lifespan
         private List<HairTransitionContext> _activeTransitions = new List<HairTransitionContext>();
         private Dictionary<int, CharacterMesh> _meshCache = new Dictionary<int, CharacterMesh>();
 
-        public void ResetTransitions()
+        public void ResetAllState()
         {
-            _activeTransitions.Clear();
-            _meshCache.Clear();
+            if (LifespanLoggerExtensions.VerboseEnabled) LifespanLoggerExtensions.Debug(_log, "Resetting all mod state for fresh session.");
+            
+            _activeTransitions?.Clear();
+            _meshCache?.Clear();
+            TooltipCache.Clear();
+            _dialogueScheduler?.Clear();
+            _deathManager?.Reset();
         }
 
         public void Initialize(IPluginContext ctx)
@@ -54,9 +67,11 @@ namespace Lifespan
             _ctx = ctx;
             _log = ctx.Log;
             
-            // 1. Load Configuration (sets VerboseEnabled)
-            LoadConfiguration();
+            // 1. Load Configuration (using new Spine serializer logic)
+            // Ensure config instance exists before loading
+            if (_config == null) _config = new LifespanConfig(); 
 
+            ResetAllState();
             LifespanLoggerExtensions.Debug(_log, "Initialize() complete.");
         }
 
@@ -69,9 +84,16 @@ namespace Lifespan
             _ageTracker = new AgeTracker(_ctx, _config);
             _childManager = new ChildTransitionManager(_ctx, _config, _ageTracker);
             _illnessManager = new ElderIllnessManager(_ctx, _config, _ageTracker);
+            _milestoneManager = new MilestoneManager(_ctx, _config, _ageTracker); // Added
             _deathManager = new DeathManager(_ctx, _config, _ageTracker);
             _devGeneManager = new DevelopmentGeneManager(_ctx, _config, _ageTracker);
+            _dialogueScheduler = new DialogueScheduler(_log);
             _illnessManager.SetDeathManager(_deathManager);
+            _illnessManager.SetScheduler(_dialogueScheduler);
+            _milestoneManager.SetScheduler(_dialogueScheduler);
+            _deathManager.SetScheduler(_dialogueScheduler);
+            _devGeneManager.SetScheduler(_dialogueScheduler);
+            _devGeneManager.SetMilestoneManager(_milestoneManager);
             _debugManager = new DebugManager(_log, _config);
 
             // 3. Register API
@@ -102,6 +124,9 @@ namespace Lifespan
             var tooltipPostfix = new HarmonyMethod(typeof(UI_CharacterTooltip_UpdateValues_Patch).GetMethod("Postfix")) { priority = Priority.LowerThanNormal };
             PatchManually(typeof(UI_CharacterTooltip), "UpdateValues", postfix: tooltipPostfix);
 
+            var tooltipHidePostfix = new HarmonyMethod(typeof(UI_CharacterTooltip_HideTooltip_Patch).GetMethod("Postfix"));
+            PatchManually(typeof(UI_CharacterTooltip), "HideTooltip", postfix: tooltipHidePostfix, parameters: new[] { typeof(bool) });
+
             var saveLoadPostfix = new HarmonyMethod(typeof(AgingPatches.BaseCharacter_SaveLoadCharacter_Patch).GetMethod("Postfix"));
             PatchManually(typeof(BaseCharacter), "SaveLoadCharacter", postfix: saveLoadPostfix, parameters: new[] { typeof(SaveData) });
 
@@ -114,6 +139,16 @@ namespace Lifespan
             // Fix: CreateObituaryInfo takes a BaseCharacter parameter
             var obituaryPostfix = new HarmonyMethod(typeof(GameOverPatches.FamilyManager_CreateObituaryInfo_Patch).GetMethod("Postfix"));
             PatchManually(typeof(FamilyManager), "CreateObituaryInfo", postfix: obituaryPostfix, parameters: new[] { typeof(BaseCharacter) });
+
+            // UI Patches - Manually patched to bypass PatchAll failures
+            var obituarySetupPostfix = new HarmonyMethod(typeof(GameOverPatches.ObituaryInfo_SetupObituary_Patch).GetMethod("Postfix"));
+            PatchManually(typeof(ObituaryInfo), "SetupObituary", postfix: obituarySetupPostfix, parameters: new[] { typeof(FamilyManager.DeadCharacterInfo) });
+
+            var gameOverOnShowPostfix = new HarmonyMethod(typeof(GameOverPatches.GameOverPanel_OnShow_Patch).GetMethod("Postfix"));
+            PatchManually(typeof(GameOverPanel), "OnShow", postfix: gameOverOnShowPostfix);
+
+            var partyMapOnShowPostfix = new HarmonyMethod(typeof(ExpeditionUIPatches.PartyMapPanel_OnShow_Patch).GetMethod("Postfix"));
+            PatchManually(typeof(PartyMapPanel), "OnShow", postfix: partyMapOnShowPostfix);
 
             // Manual Patching for IntegrationPatches (NPCs) to ensure they work
             try 
@@ -171,66 +206,43 @@ namespace Lifespan
             }
         }
 
-        private void LoadConfiguration()
-        {
-            _config = new LifespanConfig();
-            _config.verboseLogging = true; // Force verbose logging for debugging
-            LifespanLoggerExtensions.Debug(_log, "Loading configuration from ModAPI Settings...");
-            
-            // Map ModSettings to our config object
-            _config.adultAgeYears = _ctx.Settings.GetInt("adultAgeYears", 18);
-            _config.elderAgeYears = _ctx.Settings.GetInt("elderAgeYears", 60);
-            _config.maxAgeYears = _ctx.Settings.GetInt("maxAgeYears", 90);
-            _config.verboseLogging = _ctx.Settings.GetBool("verboseLogging", false);
 
-            // Sync static flag for extension method
-            LifespanLoggerExtensions.VerboseEnabled = _config.verboseLogging;
-            _config.initialAdultAgeYears = _ctx.Settings.GetInt("initialAdultAgeYears", 30);
-            
-            _config.elderIllnessBaseChance = _ctx.Settings.GetFloat("elderIllnessBaseChance", 0.001f);
-            _config.deathProbabilityMultiplier = _ctx.Settings.GetFloat("deathProbabilityMultiplier", 1.0f);
-            
-            _config.enableDementia = _ctx.Settings.GetBool("enableDementia", true);
-            _config.enableArthritis = _ctx.Settings.GetBool("enableArthritis", true);
-            _config.enableHeartDisease = _ctx.Settings.GetBool("enableHeartDisease", true);
-            _config.enableFrailty = _ctx.Settings.GetBool("enableFrailty", true);
-            _config.enableRespiratory = _ctx.Settings.GetBool("enableRespiratory", true);
-            
-            _config.agingIntervalWeeks = _ctx.Settings.GetInt("agingIntervalWeeks", 1);
-            _config.weeksAgedPerInterval = _ctx.Settings.GetInt("weeksAgedPerInterval", 52); // Default to 1 year
-
-            _config.dementiaIntModifier = _ctx.Settings.GetFloat("dementiaIntModifier", 0.5f);
-            _config.arthritisSpeedModifier = _ctx.Settings.GetFloat("arthritisSpeedModifier", 0.7f);
-            _config.frailtyStrModifier = _ctx.Settings.GetFloat("frailtyStrModifier", 0.6f);
-            _config.heartDiseaseAttackChance = _ctx.Settings.GetFloat("heartDiseaseAttackChance", 0.02f);
-            _config.heartAttackDamage = _ctx.Settings.GetFloat("heartAttackDamage", 60f);
-
-            _config.ValidateAndClamp();
-            
-            LifespanLoggerExtensions.Debug(_log, "Config validation complete.");
-            _log.Info($"Configuration loaded (Verbose: {_config.verboseLogging})");
-        }
 
         public void Update()
         {
             _debugManager?.Update();
             _deathManager?.Update();
+            _dialogueScheduler?.Update();
             UpdateHairTransitions();
         }
 
         private void UpdateHairTransitions()
         {
+            // Feature Toggle
+            if (!_config.enableHairGreying)
+            {
+                if (_activeTransitions.Count > 0) _activeTransitions.Clear();
+                return;
+            }
+
             if (_activeTransitions.Count == 0) return;
 
             float dt = UnityEngine.Time.deltaTime;
             float lerpSpeed = _config.hairGreyingLerpSpeed * dt; 
             float maxDuration = _config.hairGreyingMaxDuration;
 
+            // Performance: Cap the number of mesh updates per frame
+            const int TRANSITION_FRAME_BUDGET = 5;
+            int processedThisFrame = 0;
+
             for (int i = _activeTransitions.Count - 1; i >= 0; i--)
             {
+                if (processedThisFrame >= TRANSITION_FRAME_BUDGET) break;
+                processedThisFrame++;
+
                 var context = _activeTransitions[i];
 
-                if (context.Member == null || context.Member.isDead || context.CachedMesh == null)
+                if (context.Member == null || context.Member.isDead || context.CachedMesh == null || context.CachedMesh.gameObject == null)
                 {
                     if (context.Member != null)
                     {
@@ -303,7 +315,7 @@ namespace Lifespan
                 return;
             }
 
-            _log.Info($"Processing aging for members (+{_config.weeksAgedPerInterval} weeks).");
+            LifespanLoggerExtensions.Debug(_log, $"Processing aging for members (+{_config.weeksAgedPerInterval} weeks).");
             
             var members = FamilyManager.Instance.GetAllFamilyMembers();
             if (members == null)
@@ -312,10 +324,10 @@ namespace Lifespan
                 return;
             }
 
-            _log.Info($"[AGING] Found {members.Count} members to process.");
+            LifespanLoggerExtensions.Debug(_log, $"[AGING] Found {members.Count} members to process.");
             foreach (var member in members)
             {
-                _log.Info($"[AGING] ===== Processing member: {(member != null ? member.firstName : "NULL MEMBER")} =====");
+                LifespanLoggerExtensions.Debug(_log, $"[AGING] ===== Processing member: {(member != null ? member.firstName : "NULL MEMBER")} =====");
                 if (member == null)
                 {
                     _log.Warn("[AGING] Member in list is null. Skipping.");
@@ -324,13 +336,13 @@ namespace Lifespan
 
                 if (member.isDead)
                 {
-                    _log.Info($"[AGING] Member '{member.firstName}' is dead. Skipping.");
+                    LifespanLoggerExtensions.Debug(_log, $"[AGING] Member '{member.firstName}' is dead. Skipping.");
                     continue;
                 }
                 
                 if (member.isDying)
                 {
-                    _log.Info($"[AGING] Member '{member.firstName}' is dying. Skipping.");
+                    LifespanLoggerExtensions.Debug(_log, $"[AGING] Member '{member.firstName}' is dying. Skipping.");
                     continue;
                 }
 
@@ -346,7 +358,7 @@ namespace Lifespan
                 int adultWeeks = _config.adultAgeYears * 52;
                 if (member.isChild && newAgeWeeks >= adultWeeks)
                 {
-                    _log.Info($"[AGING] -> {member.firstName} is now an adult. Transitioning...");
+                    _log.Info($"[Lifespan] {member.firstName} has reached adulthood.");
                     _childManager.TransitionToAdult(member);
                 }
 
@@ -364,14 +376,21 @@ namespace Lifespan
                 if (LifespanLoggerExtensions.VerboseEnabled) _log.Info($"[AGING] Step 5: Processing development for '{member.firstName}'.");
                 _devGeneManager.ProcessDevelopment(member, newAgeWeeks, _config.weeksAgedPerInterval);
 
+                if (LifespanLoggerExtensions.VerboseEnabled) _log.Info($"[AGING] Step 6: Processing milestones for '{member.firstName}'.");
+                _milestoneManager.ProcessMilestones(member, newAgeWeeks);
+
                 if (member.isDead)
                 {
-                    _log.Info($"[AGING] -> Member '{member.firstName}' died during an illness or development step. Stopping processing for this member.");
+                    LifespanLoggerExtensions.Debug(_log, $"[AGING] -> Member '{member.firstName}' died during an illness or development step.");
                     continue;
                 }
 
-                if (LifespanLoggerExtensions.VerboseEnabled) _log.Info($"[AGING] Step 6: Processing death roll for '{member.firstName}'.");
-                _deathManager.ProcessDeathRoll(member, newAgeWeeks);
+                if (LifespanLoggerExtensions.VerboseEnabled) _log.Info($"[AGING] Step 7: Processing death roll for '{member.firstName}'.");
+                
+                if (_config.enableNaturalDeath)
+                {
+                    _deathManager.ProcessDeathRoll(member, newAgeWeeks);
+                }
                 
                 if (!member.isDead)
                 {
@@ -380,12 +399,12 @@ namespace Lifespan
                 }
                 else
                 {
-                    _log.Info($"[AGING] -> Member '{member.firstName}' died from old age.");
+                    _log.Info($"[Lifespan] {member.firstName} died of old age.");
                 }
-                if (LifespanLoggerExtensions.VerboseEnabled) _log.Info($"[AGING] ===== Finished processing member: {member.firstName} =====");
+                LifespanLoggerExtensions.Debug(_log, $"[AGING] ===== Finished processing member: {member.firstName} =====");
             }
             
-            _log.Info("[AGING] Cycle complete. Cleaning up missing members from tracker.");
+            LifespanLoggerExtensions.Debug(_log, "[AGING] Cycle complete. Cleaning up missing members from tracker.");
             _ageTracker.CleanupMissingMembers();
 
             // Force UI update for selected character portrait
@@ -397,6 +416,8 @@ namespace Lifespan
 
         private void ProcessHairGreying(FamilyMember member, int ageWeeks)
         {
+            if (!_config.enableHairGreying) return;
+
             try
             {
                 var profile = _ageTracker.GetOrGenerateGreyProfile(member);
@@ -460,15 +481,16 @@ namespace Lifespan
                     }
                 }
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 // Warn once per member/session ideally, but fine for now
-                // _log.Warn($"[DEBUG] Greying failed for {member.firstName}: {ex.Message}");
+                // _log.Warn($"[DEBUG] Greying failed for {member.firstName}");
             }
         }
 
         private void OnGameLoad(SaveData data)
         {
+            ResetAllState();
             if (LifespanLoggerExtensions.VerboseEnabled) LifespanLoggerExtensions.Debug(_log, "OnGameLoad() triggering tracker load.");
             _ageTracker.LoadAgeData();
             
@@ -505,5 +527,44 @@ namespace Lifespan
             AgingPatches.OnNewWeekCallback = null;
             _log.Info("[Lifespan] Mod shut down.");
         }
+
+        // ====================================================================
+        // ISETTINGSPROVIDER IMPLEMENTATION
+        // ====================================================================
+
+        /// <summary>
+        /// Provides the metadata for the ModAPI settings UI.
+        /// </summary>
+        // ====================================================================
+        // ISETTINGSPROVIDER IMPLEMENTATION
+        // ====================================================================
+
+        public IEnumerable<SettingDefinition> GetSettings()
+        {
+            if (_config == null) _config = new LifespanConfig();
+            return SpineSettingsHelper.Scan(_config);
+        }
+
+        public void OnSettingsLoaded()
+        {
+            // Sync static logger enabled state
+            LifespanLoggerExtensions.VerboseEnabled = _config.verboseLogging;
+            _log.Info($"[Spine] Settings auto-loaded (Verbose: {_config.verboseLogging})");
+        }
+
+        public void ResetToDefaults()
+        {
+            // Fix: Don't replace the object (managers hold a reference to it).
+            // Instead, create a temporary default one and copy values over, 
+            // or just use JsonUtility to overwrite from a fresh instance.
+            var defaults = new LifespanConfig();
+            string json = JsonUtility.ToJson(defaults);
+            JsonUtility.FromJsonOverwrite(json, _config);
+            
+            _log.Info("[Spine] Settings reset to defaults (values overridden in current instance).");
+        }
+
+        public object GetSettingsObject() => _config ?? (_config = new LifespanConfig());
+
     }
 }

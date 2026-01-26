@@ -35,9 +35,9 @@ namespace Lifespan
     {
         public string CharacterId;
         public int AgeWeeks;
-        public int Context; // Cast to AgeContext enum
+        public AgeContext Context; 
 
-        public CharacterAgeGeneratedArgs(BaseCharacter character, int weeks, int context)
+        public CharacterAgeGeneratedArgs(BaseCharacter character, int weeks, AgeContext context)
         {
             CharacterId = character.GetId().ToString();
             AgeWeeks = weeks;

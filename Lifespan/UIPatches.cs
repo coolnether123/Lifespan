@@ -33,6 +33,11 @@ namespace Lifespan
                 _cache.Remove(tooltip);
         }
 
+        public static void Clear()
+        {
+            _cache.Clear();
+        }
+
         public static bool TryGetData(UI_CharacterTooltip tooltip, out FamilyMember member, out UILabel label)
         {
             if (LifespanLoggerExtensions.VerboseEnabled) MMLog.Write("[DEBUG] [TooltipCache] TryGetData called.");
@@ -125,6 +130,14 @@ namespace Lifespan
             {
                 if (LifespanLoggerExtensions.VerboseEnabled) MMLog.Write("[DEBUG] UIPatch Error: " + ex.ToString());
             }
+        }
+    }
+
+    public static class UI_CharacterTooltip_HideTooltip_Patch
+    {
+        public static void Postfix(UI_CharacterTooltip __instance)
+        {
+            TooltipCache.OnTooltipHide(__instance);
         }
     }
 }

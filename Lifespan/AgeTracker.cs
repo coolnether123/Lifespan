@@ -56,8 +56,9 @@ namespace Lifespan
             }
             else
             {
-                // Most adults 28-45, some younger/older
-                return Mathf.Clamp(NormalDistribution(_config.initialAdultAgeYears, 12), 18, 90) * 52;
+                // Most adults 32-45, some younger/older
+                // Shifted mean to 32 to help distinguish "Reset" ages from legitimate young adults
+                return Mathf.Clamp(NormalDistribution(32, 14), 18, 90) * 52;
             }
         }
 
@@ -102,7 +103,7 @@ namespace Lifespan
             
             // Publish event for other mods
             ModEventBus.Publish("Lifespan.CharacterAgeGenerated", 
-                new CharacterAgeGeneratedArgs(character, ageWeeks, (int)context));
+                new CharacterAgeGeneratedArgs(character, ageWeeks, context));
             
             return ageWeeks;
         }
@@ -199,7 +200,7 @@ namespace Lifespan
         /// </summary>
         public int GetAgeWeeks(FamilyMember member)
         {
-            if (member == null)
+            if (object.ReferenceEquals(member, null))
                 return 0;
 
             int memberId = member.GetId();
@@ -224,7 +225,7 @@ namespace Lifespan
         /// </summary>
         public int GetAgeWeeks(BaseCharacter character)
         {
-            if (character == null) return 0;
+            if (object.ReferenceEquals(character, null)) return 0;
 
             if (character is FamilyMember fm)
             {
@@ -261,7 +262,7 @@ namespace Lifespan
         /// </summary>
         public void SetAgeWeeks(FamilyMember member, int weeks)
         {
-            if (member == null)
+            if (object.ReferenceEquals(member, null))
                 return;
 
             int memberId = member.GetId();
@@ -274,7 +275,7 @@ namespace Lifespan
         /// </summary>
         public void SetAgeWeeks(BaseCharacter character, int weeks)
         {
-            if (character == null) return;
+            if (object.ReferenceEquals(character, null)) return;
 
             if (character is FamilyMember fm)
             {
@@ -292,7 +293,7 @@ namespace Lifespan
         /// </summary>
         public int IncrementAge(FamilyMember member, int weeks)
         {
-            if (member == null) return 0;
+            if (object.ReferenceEquals(member, null)) return 0;
 
             // GetAgeWeeks handles initialization if needed
             int currentAge = GetAgeWeeks(member);
@@ -354,7 +355,7 @@ namespace Lifespan
 
             foreach (var member in members)
             {
-                if (member == null) continue;
+                if (object.ReferenceEquals(member, null)) continue;
                 // GetAgeWeeks handles initialization if member not tracked yet
                 GetAgeWeeks(member);
             }
@@ -373,19 +374,20 @@ namespace Lifespan
                 if (_ctx.LoadData("LifeSpan.AgeData", out serializableData))
                 {
                     _currentAgeData = AgeData.FromSerializable(serializableData);
-                    if (LifespanLoggerExtensions.VerboseEnabled) _log.Info($"[Lifespan] Loaded age data for {_currentAgeData.familyMemberAges.Count} members.");
+                    LifespanLoggerExtensions.Debug(_log, $"DATA LOADED: Found records for {_currentAgeData.familyMemberAges.Count} members.");
                 }
                 else
                 {
-                    _log.Info("[Lifespan] No age records found, initializing fresh.");
+                    _log.Warn("[Lifespan] DATA MISSING: No age records found in save file. Assuming NEW Lifespan save or DATA LOSS.");
                     _currentAgeData = new AgeData();
                     InitializeExistingMembers();
                 }
             }
             catch (Exception ex)
             {
-                _log.Error($"[Lifespan] Failed to load age data: {ex.Message}");
+                _log.Error($"[Lifespan] CRITICAL FAILURE loading age data: {ex.Message}");
                 _currentAgeData = new AgeData();
+                InitializeExistingMembers();
             }
         }
 
@@ -395,12 +397,15 @@ namespace Lifespan
             var members = FamilyManager.Instance.GetAllFamilyMembers();
             if (members == null) return;
 
-            LifespanLoggerExtensions.Debug(_log, "[AgeTracker] Initializing existing members from FamilyManager.");
+            LifespanLoggerExtensions.Debug(_log, "[AgeTracker] Initializing members... (This should only happen once per save!)");
             foreach (var member in members)
             {
-                if (member != null && !member.isDead)
+                if (!object.ReferenceEquals(member, null) && !member.isDead)
                 {
-                    GetAgeWeeks(member);
+                    // If the ID is somehow already tracked, GetAgeWeeks won't overwrite it.
+                    // But if we are here, _currentAgeData is likely empty.
+                    int newAge = GetAgeWeeks(member);
+                    LifespanLoggerExtensions.Debug(_log, $"Generated FRESH age for {member.firstName}: {newAge / 52} years.");
                 }
             }
         }
@@ -414,7 +419,7 @@ namespace Lifespan
             HashSet<int> validIds = new HashSet<int>();
             foreach (var member in members)
             {
-                if (member != null)
+                if (!object.ReferenceEquals(member, null))
                 {
                     validIds.Add(member.GetId());
                 }
@@ -476,8 +481,35 @@ namespace Lifespan
             if (_currentAgeData.elderIllnesses.ContainsKey(id))
             {
                 _currentAgeData.elderIllnesses[id].Remove(illnessId);
+                // Also remove onset timing
+                if (_currentAgeData.onsetTiming.ContainsKey(id))
+                {
+                    _currentAgeData.onsetTiming[id].Remove(illnessId);
+                }
                 LifespanLoggerExtensions.Debug(_log, $"[AgeTracker] Removed illness {illnessId} from {member.firstName}.");
             }
+        }
+
+        public void SetOnsetWeek(FamilyMember member, string illnessId, int targetWeek)
+        {
+             if (member == null) return;
+             int id = member.GetId();
+             if (!_currentAgeData.onsetTiming.ContainsKey(id))
+             {
+                 _currentAgeData.onsetTiming[id] = new Dictionary<string, int>();
+             }
+             _currentAgeData.onsetTiming[id][illnessId] = targetWeek;
+        }
+
+        public int GetOnsetWeek(FamilyMember member, string illnessId)
+        {
+             if (member == null) return -1;
+             int id = member.GetId();
+             if (_currentAgeData.onsetTiming.TryGetValue(id, out var timing) && timing.TryGetValue(illnessId, out int week))
+             {
+                 return week;
+             }
+             return -1;
         }
 
         /// <summary>
@@ -583,6 +615,9 @@ namespace Lifespan
         public Dictionary<int, List<string>> elderIllnesses = new Dictionary<int, List<string>>();
         public Dictionary<int, GreyProfile> greyProfiles = new Dictionary<int, GreyProfile>();
         public Dictionary<int, DevelopmentGene> developmentGenes = new Dictionary<int, DevelopmentGene>();
+        // Key: Member ID, Value: Map of IllnessID -> Week it should upgrade/trigger next stage
+        public Dictionary<int, Dictionary<string, int>> onsetTiming = new Dictionary<int, Dictionary<string, int>>();
+
         public Dictionary<int, int> deceasedDeathDays = new Dictionary<int, int>();
         public Dictionary<int, int> deceasedDeathAges = new Dictionary<int, int>();
 
@@ -613,6 +648,11 @@ namespace Lifespan
             {
                 foreach (var kvp in developmentGenes)
                     s.developmentGenes.Add(new DevelopmentGeneEntry { id = kvp.Key, gene = kvp.Value });
+            }
+            if (onsetTiming != null)
+            {
+                foreach (var kvp in onsetTiming)
+                    s.onsetData.Add(new OnsetEntry { id = kvp.Key, onsetWeeks = kvp.Value });
             }
             if (deceasedDeathDays != null)
             {
@@ -657,6 +697,11 @@ namespace Lifespan
                     foreach (var entry in s.developmentGenes)
                         data.developmentGenes[entry.id] = entry.gene;
                 }
+                if (s.onsetData != null)
+                {
+                    foreach (var entry in s.onsetData)
+                        data.onsetTiming[entry.id] = entry.onsetWeeks;
+                }
                 if (s.deathDays != null)
                 {
                     foreach (var entry in s.deathDays)
@@ -680,6 +725,7 @@ namespace Lifespan
         public List<IllnessEntry> illnesses = new List<IllnessEntry>();
         public List<GreyProfileEntry> greyProfiles = new List<GreyProfileEntry>();
         public List<DevelopmentGeneEntry> developmentGenes = new List<DevelopmentGeneEntry>();
+        public List<OnsetEntry> onsetData = new List<OnsetEntry>();
         public List<AgeEntry> deathDays = new List<AgeEntry>();
         public List<AgeEntry> deathAges = new List<AgeEntry>();
     }
@@ -713,5 +759,12 @@ namespace Lifespan
     {
         public int id;
         public GreyProfile profile;
+    }
+
+    [Serializable]
+    public class OnsetEntry
+    {
+        public int id;
+        public Dictionary<string, int> onsetWeeks = new Dictionary<string, int>();
     }
 }

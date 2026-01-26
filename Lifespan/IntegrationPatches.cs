@@ -14,7 +14,6 @@ namespace Lifespan
         // and assigns them an age immediately.
         // ====================================================================
         
-        [HarmonyPatch(typeof(NpcVisitManager), "CreateNpcVisitor")]
         public static class NpcVisitManager_CreateNpcVisitor_Patch
         {
             public static void Postfix(NpcVisitor __result, NpcVisitor.NpcType type)
@@ -76,7 +75,6 @@ namespace Lifespan
         // We must transfer the age from the old NpcVisitor ID to the new FamilyMember ID.
         // ====================================================================
 
-        [HarmonyPatch(typeof(FamilyManager), "AdoptNpc")]
         public static class FamilyManager_AdoptNpc_Patch
         {
             // Capture the age of the NPC before it is potentially destroyed/converted

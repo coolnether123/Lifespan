@@ -9,8 +9,7 @@ namespace Lifespan
 {
     public static class ExpeditionUIPatches
     {
-        [HarmonyPatch(typeof(PartyMapPanel), "OnResume")]
-        public static class PartyMapPanel_OnResume_Patch
+        public static class PartyMapPanel_OnShow_Patch
         {
             public static void Postfix(PartyMapPanel __instance)
             {
@@ -40,8 +39,6 @@ namespace Lifespan
 
                     // Refresh the visual elements (labels, health bars, etc.)
                     ReflectionHelper.InvokeMethod(__instance, "UpdateUI");
-                    
-                    // MMLog.Write($"[Lifespan] Refreshed Expedition Panel on resume. New count: {count}, Current Index: {currentIndex}");
                 }
                 catch (Exception ex)
                 {

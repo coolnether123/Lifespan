@@ -152,6 +152,23 @@ namespace Lifespan
                     break;
             }
         }
+
+        /// <summary>
+        /// Logic for transitioning from childhood to adulthood.
+        /// Leftover childhood potential is halved and added to adult potential.
+        /// </summary>
+        public void TransitionToAdult()
+        {
+            if (!PreAdultPotentialForfeited)
+            {
+                int leftoverChildhood = Math.Max(0, PreAdultPotential - PreAdultGainsAwarded);
+                if (leftoverChildhood > 0)
+                {
+                    int bonus = leftoverChildhood / 2; // Rounding down
+                    PostAdultPotential += bonus;
+                }
+            }
+        }
     }
 
     /// <summary>

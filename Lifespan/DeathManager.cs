@@ -15,9 +15,8 @@ namespace Lifespan
         private readonly IModLogger _log;
         private readonly AgeTracker _ageTracker;
         private readonly System.Random _random;
+        private DialogueScheduler _scheduler;
 
-        private const float DEATH_PROB_PER_YEAR = 0.001f;
-        private const float HEALTH_IMPACT_FACTOR = 10f;
         private const int MAX_AGE_DEATH_REASON_THRESHOLD_WEEKS = 104;
         private const int SCHEDULE_DEATH_RANDOM_OFFSET_DAYS = 7;
         private const float FATAL_DAMAGE_AMOUNT = 999f;
@@ -28,6 +27,26 @@ namespace Lifespan
             _log = ctx.Log;
             _ageTracker = ageTracker;
             _random = new System.Random();
+        }
+
+        public void SetScheduler(DialogueScheduler scheduler)
+        {
+            _scheduler = scheduler;
+        }
+
+        private void TriggerJournal(string text, DialogueScheduler.Priority priority = DialogueScheduler.Priority.Routine)
+        {
+            if (_scheduler != null) _scheduler.Enqueue(null, text, true, priority);
+            else if (JournalManager.Instance != null)
+            {
+                try { ReflectionHelper.InvokeMethod(JournalManager.Instance, "InsertJournalEntry", text, "", false); } catch { }
+            }
+        }
+
+        private void TriggerSpeech(FamilyMember member, string text, DialogueScheduler.Priority priority = DialogueScheduler.Priority.Routine)
+        {
+            if (_scheduler != null) _scheduler.Enqueue(member, text, false, priority);
+            else try { member.Say(text); } catch { }
         }
 
         public void Reset()
@@ -111,27 +130,17 @@ namespace Lifespan
 
             if (LifespanLoggerExtensions.VerboseEnabled) LifespanLoggerExtensions.Debug(_log, $"Processing death roll for {member.firstName} ({ageWeeks/52}y).");
 
-            // 1. Check if they have reached the maximum age
-            int maxAgeWeeks = _config.maxAgeYears * 52;
-            if (ageWeeks >= maxAgeWeeks)
-            {
-                _log.Info($"[Lifespan] {member.firstName} has reached their time ({_config.maxAgeYears}y).");
-                ScheduleDeath(member, "Natural causes"); // Use overload with random offset
-                return;
-            }
-
-            // 2. Probability of death increases with age past elder threshold
+            // 1. Probability of death increases with age past elder threshold
             int elderWeeks = _config.elderAgeYears * 52;
             if (ageWeeks > elderWeeks)
             {
                 float yearsPastElder = (float)(ageWeeks - elderWeeks) / 52f;
-                
-                // Lowered death chance by half as requested
-                float baseProb = _config.deathBaseProbability + (yearsPastElder * DEATH_PROB_PER_YEAR);
+                // Config is now Percentage (0-100), convert to 0-1
+                float baseProb = (_config.deathBaseProbability / 100f) + (yearsPastElder * (_config.deathProbabilityIncreasePerYear / 100f));
                 
                 float healthFactor = 1.0f - ((float)member.health / member.maxHealth);
                 // Non-linear HP impact: health increases chance MORE the lower the HP
-                float healthImpact = 1.0f + (healthFactor * healthFactor * HEALTH_IMPACT_FACTOR);
+                float healthImpact = 1.0f + (healthFactor * healthFactor * _config.healthImpactFactor);
                 
                 float finalProb = baseProb * healthImpact * _config.deathProbabilityMultiplier;
 
@@ -141,7 +150,10 @@ namespace Lifespan
                 if (roll < finalProb)
                 {
                     if (LifespanLoggerExtensions.VerboseEnabled) LifespanLoggerExtensions.Debug(_log, $"Death Roll SUCCESS for {member.firstName}.");
-                    string reason = ageWeeks >= maxAgeWeeks - MAX_AGE_DEATH_REASON_THRESHOLD_WEEKS ? "Old age" : "Natural causes";
+                    
+                    // Logic: Use "Old age" if very old (80+), otherwise "Natural causes"
+                    string reason = (ageWeeks >= 80 * 52) ? "Old age" : "Natural causes";
+                    
                     // Brief delay 0-6 days to spread out mass deaths
                     int dayOffset = _random.Next(0, SCHEDULE_DEATH_RANDOM_OFFSET_DAYS); 
                     ScheduleDeath(member, reason, dayOffset);
@@ -189,15 +201,8 @@ namespace Lifespan
             string phrase = _surgePhrases[_random.Next(_surgePhrases.Length)];
             if (LifespanLoggerExtensions.VerboseEnabled) LifespanLoggerExtensions.Debug(_log, $"Starting Surge for {member.firstName}. Phrase: \"{phrase}\"");
 
-            // Trigger the character's speech bubble using the public Say method
-            try
-            {
-                member.Say(phrase);
-            }
-            catch (Exception ex)
-            {
-                if (LifespanLoggerExtensions.VerboseEnabled) LifespanLoggerExtensions.Debug(_log, $"Failed to show surge bubble: {ex.Message}");
-            }
+            // Trigger the character's speech bubble
+            TriggerSpeech(member, phrase, DialogueScheduler.Priority.Reactive);
 
             // Use constants
             float delay = (float)(_random.NextDouble() * (_config.surgeMaxDelay - _config.surgeMinDelay) + _config.surgeMinDelay);
@@ -265,7 +270,7 @@ namespace Lifespan
                              } 
                              catch (Exception ex)
                              {
-                                 if (LifespanLoggerExtensions.VerboseEnabled) LifespanLoggerExtensions.Debug(_log, $"Party cleanup failed: {ex.Message}");
+                                 _log.Error($"Party cleanup failed: {ex.Message}");
                              }
                              break;
                          }
@@ -282,10 +287,10 @@ namespace Lifespan
             // We rely on CustomDeathDates dictionary instead.
 
             // Add journal entry
-            if (JournalManager.Instance != null && member.isDead)
+            if (member.isDead)
             {
                 if (LifespanLoggerExtensions.VerboseEnabled) LifespanLoggerExtensions.Debug(_log, "Inserting death journal entry.");
-                ReflectionHelper.InvokeMethod(JournalManager.Instance, "InsertJournalEntry", $"{member.firstName} has passed away of old age. They will be missed.", "", false);
+                TriggerJournal($"{member.firstName} has passed away of old age. They will be missed.", DialogueScheduler.Priority.Reactive);
             }
         }
 
@@ -387,15 +392,12 @@ namespace Lifespan
                     }
                     catch (Exception ex)
                     {
-                         LifespanLoggerExtensions.Debug(_log, $"[DeathManager] Radio cleanup failed for {member.firstName}: {ex.Message}");
+                         _log.Error($"[DeathManager] Radio cleanup failed for {member.firstName}: {ex.Message}");
                     }
                 }
                 
                 // 3. Journal entry
-                if (JournalManager.Instance != null)
-                {
-                    ReflectionHelper.InvokeMethod(JournalManager.Instance, "InsertJournalEntry", $"{member.firstName} has passed away peacefully in the wasteland.", "", false);
-                }
+                TriggerJournal($"{member.firstName} has passed away peacefully in the wasteland.", DialogueScheduler.Priority.Reactive);
             };
 
             radioParams.acceptButtonTextId = "Goodbye";

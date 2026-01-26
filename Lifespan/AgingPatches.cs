@@ -65,7 +65,7 @@ namespace Lifespan
                 // Reset Managers to purge data from previous game session
                 Tracker?.Reset();
                 DeathManager?.Reset();
-                LifespanPlugin.Instance?.ResetTransitions();
+                LifespanPlugin.Instance?.ResetAllState();
             }
         }
 

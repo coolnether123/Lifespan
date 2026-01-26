@@ -34,33 +34,28 @@ namespace Lifespan
 
         private void AdvanceDay()
         {
-            GameTime gameTimeInstance = UnityEngine.Object.FindObjectOfType<GameTime>();
-            if (gameTimeInstance == null)
-            {
-                _log.Warn("[DEBUG] DebugManager: GameTime instance not found via FindObjectOfType.");
-                return;
-            }
-
-            // Get private game_time field
-            FieldInfo gameTimeField = typeof(GameTime).GetField("game_time", BindingFlags.NonPublic | BindingFlags.Instance);
+            // Get private static game_time field
+            FieldInfo gameTimeField = typeof(GameTime).GetField("game_time", BindingFlags.NonPublic | BindingFlags.Static);
             if (gameTimeField == null)
             {
-                _log.Warn("[DEBUG] DebugManager: Could not get game_time field.");
+                _log.Warn("[DEBUG] DebugManager: Could not get static game_time field.");
                 return;
             }
 
             try
             {
-                float currentTime = (float)gameTimeField.GetValue(gameTimeInstance);
+                float currentTime = (float)gameTimeField.GetValue(null);
                 int currentDay = GameTime.Day;
                 
                 LifespanLoggerExtensions.Debug(_log, $"[DEBUG] DebugManager: Current Day: {currentDay}, Current Time: {currentTime}");
 
-                // Let's assume day ends at 21600
+                // Day resets/advances when game_time hits 21600 (from below)
+                // If we are already past 21600, we need to go to 86400 (end of day) then it wraps and hits 21600.
+                // Or we can just set it to 21595 to trigger the logic in Update()
                 float nearEnd = 21595f; 
-                gameTimeField.SetValue(gameTimeInstance, nearEnd);
+                gameTimeField.SetValue(null, nearEnd);
                 
-                LifespanLoggerExtensions.Debug(_log, "[DEBUG] DebugManager: Set game_time to 21595. The game should trigger a New Day within the next few frames.");
+                LifespanLoggerExtensions.Debug(_log, "[DEBUG] DebugManager: Set static game_time to 21595. The game should trigger a New Day within the next few frames.");
             }
             catch (Exception ex)
             {

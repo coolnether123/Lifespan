@@ -72,29 +72,32 @@ At the death risk threshold (default: 75 years):
 - Death cause is recorded (old age or specific illness)
 - Journal entry created upon death
 
-## Configuration
+## Configuration (New!)
 
-All settings are configurable and persist globally across all saves:
+All settings are now fully integrated into the game's **Mod Manager UI**. You can adjust these values on the fly without restarting the game.
 
-### Age Thresholds (in years)
-- `adultThresholdYears` (default: 18)
-- `elderThresholdYears` (default: 65)
-- `deathRiskThresholdYears` (default: 75)
+### Life Stages
+- **Adulthood Age**: Age at which children become adults. (Default: 18)
+    - *Constraint:* Must be strictly greater than "Default Child Start Age".
+- **Elderly Age**: Age at which characters become susceptible to illness and death. (Default: 60)
+    - *Constraint:* Must be strictly greater than "Adulthood Age".
 
-### Illness Settings
-- `elderIllnessBaseChance` (default: 0.001 = 0.1% per check)
-- `enableDementia`, `enableArthritis`, `enableHeartDisease`, `enableFrailty`, `enableRespiratory` (all default: true)
+### Aging Speed
+- **Weeks Between Aging**: How real-time weeks correspond to biological aging checks. (Default: 1 week)
+- **Biological Weeks Per Tick**: How much older a character gets per check. (Default: 52 weeks / 1 year)
 
-### Death Settings
-- `deathBaseChance` (default: 0.0005 = 0.05% per check)
-- `deathChancePerYearOver` (default: 0.001 = 0.1% per year)
+### Visuals
+- **Hair Greying**: Toggle to enable dynamic hair color fading based on genetics and age.
 
-### Effect Multipliers
-- `dementiaIntModifier` - Intelligence reduction (default: 0.5 = 50%)
-- `arthritisSpeedModifier` - Speed reduction (default: 0.7 = 70%)
-- `frailtyStrModifier` - Strength reduction (default: 0.6 = 60%)
-- `heartDiseaseAttackChance` - Weekly heart attack chance (default: 0.01 = 1%)
-- `heartAttackDamage` - Damage from heart attacks (default: 50)
+### Elder Illnesses
+Completely toggle individual illnesses on/off:
+- **Dementia**: Reduces Intelligence.
+- **Heart Disease**: Risk of heart attacks in high stress.
+- **Arthritis**: Reduces movement speed.
+- **Frailty**: Reduces Strength.
+- **Respiratory Issues**: Affects stamina.
+
+---
 
 ## API for Other Mods
 
@@ -118,11 +121,6 @@ if (ModAPIRegistry.TryGetAPI<ILifespanAPI>("com.lifespan.api", out var lifespanA
     
     // Add a custom illness
     lifespanAPI.AddIllness(member, "lifespan.illness.dementia");
-    
-    // Modify configuration
-    var config = lifespanAPI.GetConfiguration();
-    config.elderThresholdYears = 60;
-    lifespanAPI.SetConfiguration(config);
 }
 ```
 
@@ -151,12 +149,12 @@ ModEventBus.Subscribe<BecameAdultEventArgs>("Lifespan.BecameAdult", args =>
 1. Ensure Sheltered ModAPI v1.0.1 is installed
 2. Copy the `Lifespan` folder to `Sheltered/mods/`
 3. Enable the mod in the Mod Manager
-4. Launch the game
+4. **Recommended**: Configure your preferred aging speed in the Settings menu before starting a long playthrough.
 
 ## Compatibility
 
 - **Save Compatibility**: Age data is stored per-save. **CRITICAL WARNING**: Disabling the mod mid-playthrough will PERMANENTLY WIPE generational records (death history, illnesses). Any characters who have aged up will reset to young-adult or child baselines if the mod is re-enabled. Ensure this mod remains active for the duration of your save session.
-- **New Saves**: Characters will be initialized with appropriate ages based on their child/adult status (approx. 10y for kids, 18y for adults).
+- **New Saves**: Characters will be initialized with appropriate ages based on their child/adult status (approx. 10y for kids, 30y for adults).
 - **Existing Saves**: When first loaded, characters will be assigned default ages based on their current status.
 
 ## Known Limitations
@@ -164,14 +162,10 @@ ModEventBus.Subscribe<BecameAdultEventArgs>("Lifespan.BecameAdult", args =>
 - Age is tracked in weeks, not individual days
 - Stat modifications from illnesses are not fully reversible (no cure system yet)
 - Child meshes are limited to game's existing boy/girl models
-- No pregnancy or birth mechanics (characters don't age from infancy)
 
 ## Future Plans
 
-- Configurable UI panel for viewing character ages
 - Cure/treatment system for elder illnesses
-- More illness types and progression stages
-- Aging visual effects (wrinkles, gray hair)
 - Custom events for milestone birthdays
 
 ## Credits

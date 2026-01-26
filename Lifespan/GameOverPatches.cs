@@ -46,7 +46,6 @@ namespace Lifespan
         // -------------
         // 2. UI Patch: Display correct Date & Age
         // -------------
-        [HarmonyPatch(typeof(ObituaryInfo), "SetupObituary")]
         public static class ObituaryInfo_SetupObituary_Patch
         {
             public static void Postfix(ObituaryInfo __instance, FamilyManager.DeadCharacterInfo info)
@@ -133,7 +132,6 @@ namespace Lifespan
         // -------------
         // 3. UI Patch: Top survival counter sync
         // -------------
-        [HarmonyPatch(typeof(GameOverPanel), "OnShow")]
         public static class GameOverPanel_OnShow_Patch
         {
             public static void Postfix(GameOverPanel __instance)
