@@ -58,12 +58,12 @@ namespace Lifespan
                     // Generate age. This stores it in AgeTracker using the NpcVisitor's ID.
                     int age = LifespanPlugin.Instance.Api.GenerateAgeForNPC(__result, context);
                     
-                    if (LifespanLoggerExtensions.VerboseEnabled)
-                        MMLog.Write($"[Lifespan] Generated age for {type} {__result.firstName}: {age / 52} years ({context})");
+                    if (LifespanPlugin.Instance.Log.IsDebugEnabled)
+                        LifespanPlugin.Instance.Log.Info($"Generated age for {type} {__result.firstName}: {age / 52} years ({context})");
                 }
                 catch (Exception ex)
                 {
-                    MMLog.Write($"[Lifespan] Error in CreateNpcVisitor patch: {ex.Message}");
+                    LifespanPlugin.Instance.Log.Error($"Error in CreateNpcVisitor patch: {ex.Message}");
                 }
             }
         }
@@ -104,20 +104,20 @@ namespace Lifespan
                                         if (__state > 0)
                                         {
                                             LifespanPlugin.Instance.Api.SetCharacterAgeWeeks(newMember, __state);
-                                            MMLog.Write($"[Lifespan] Transferred age {__state / 52}y from NPC to new FamilyMember {newMember.firstName}.");
+                                            LifespanPlugin.Instance.Log.Info($"Transferred age {__state / 52}y from NPC to new FamilyMember {newMember.firstName}.");
                                         }
                                         else
                                         {
-                                            MMLog.Write($"[Lifespan] Warning: Age transfer failed - NPC age state was invalid ({__state}). Initializing fresh.");
+                                            LifespanPlugin.Instance.Log.Warn($"Age transfer failed - NPC age state was invalid ({__state}). Initializing fresh.");
                                         }
                                     }
                                     else
                                     {
-                                        MMLog.Write("[Lifespan] Warning: AdoptNpc succeeded but could not find FamilyMember component on GameObject.");
+                                        LifespanPlugin.Instance.Log.Warn("AdoptNpc succeeded but could not find FamilyMember component on GameObject.");
                                     }                }
                 catch (Exception ex)
                 {
-                    MMLog.Write($"[Lifespan] Error in AdoptNpc patch: {ex.Message}");
+                    LifespanPlugin.Instance.Log.Error($"Error in AdoptNpc patch: {ex.Message}");
                 }
             }
         }

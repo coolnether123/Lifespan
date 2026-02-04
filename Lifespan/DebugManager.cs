@@ -1,5 +1,4 @@
 using ModAPI.Core;
-using ModAPI.Reflection;
 using UnityEngine;
 using System;
 using System.Reflection;
@@ -27,7 +26,7 @@ namespace Lifespan
 
             if (Input.GetKeyDown(KeyCode.F7))
             {
-                LifespanLoggerExtensions.Debug(_log, "[DEBUG] DebugManager: F7 pressed. Advancing game time by 1 day.");
+                _log.Debug("DebugManager: F7 pressed. Advancing game time by 1 day.");
                 AdvanceDay();
             }
         }
@@ -38,7 +37,7 @@ namespace Lifespan
             FieldInfo gameTimeField = typeof(GameTime).GetField("game_time", BindingFlags.NonPublic | BindingFlags.Static);
             if (gameTimeField == null)
             {
-                _log.Warn("[DEBUG] DebugManager: Could not get static game_time field.");
+                _log.Warn("DebugManager: Could not get static game_time field.");
                 return;
             }
 
@@ -47,7 +46,7 @@ namespace Lifespan
                 float currentTime = (float)gameTimeField.GetValue(null);
                 int currentDay = GameTime.Day;
                 
-                LifespanLoggerExtensions.Debug(_log, $"[DEBUG] DebugManager: Current Day: {currentDay}, Current Time: {currentTime}");
+                _log.Debug($"DebugManager: Current Day: {currentDay}, Current Time: {currentTime}");
 
                 // Day resets/advances when game_time hits 21600 (from below)
                 // If we are already past 21600, we need to go to 86400 (end of day) then it wraps and hits 21600.
@@ -55,11 +54,11 @@ namespace Lifespan
                 float nearEnd = 21595f; 
                 gameTimeField.SetValue(null, nearEnd);
                 
-                LifespanLoggerExtensions.Debug(_log, "[DEBUG] DebugManager: Set static game_time to 21595. The game should trigger a New Day within the next few frames.");
+                _log.Debug("DebugManager: Set static game_time to 21595. The game should trigger a New Day within the next few frames.");
             }
             catch (Exception ex)
             {
-                _log.Error("[DEBUG] DebugManager: Failed to advance day: " + ex.Message);
+                _log.Error("DebugManager: Failed to advance day: " + ex.Message);
             }
         }
     }

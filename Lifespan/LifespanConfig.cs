@@ -27,6 +27,31 @@ namespace Lifespan
         public int initialAdultAgeYears = 30;
 
         // ====================================================================
+        // CHILD DEVELOPMENT & EXPEDITIONS
+        // ====================================================================
+
+        [ModSetting("Enable Child Development", Tooltip = "Enables stages (Newborn, Toddler, Teen) with specific restrictions.", Category = "Development", SortOrder = 40)]
+        public bool enableChildDevelopment = true;
+
+        [ModSetting("Mobile Age", Tooltip = "Age (years) when children become mobile. Before this, they are immobile and need care.", Category = "Development", MinValue = 1, MaxValue = 10, StepSize = 1, SortOrder = 41)]
+        public int mobileAgeYears = 4;
+
+        [ModSetting("Child Job Age", Tooltip = "Age (years) when children can start doing jobs/tasks.", Category = "Development", MinValue = 1, MaxValue = 15, StepSize = 1, SortOrder = 42)]
+        public int childJobAgeYears = 4;
+
+        [ModSetting("Expedition (Accompanied) Age", Tooltip = "Min age (years) to go on expeditions with an adult.", Category = "Development", MinValue = 5, MaxValue = 18, StepSize = 1, SortOrder = 43)]
+        public int expeditionMinAgeAccompanied = 10;
+
+        [ModSetting("Expedition (Solo) Age", Tooltip = "Min age (years) to go on expeditions alone/lead a party.", Category = "Development", MinValue = 5, MaxValue = 18, StepSize = 1, SortOrder = 44)]
+        public int expeditionMinAgeSolo = 13;
+
+        [ModSetting("Accelerated Childhood Aging", Tooltip = "If true, children age 2x as fast until they reach a certain age.", Category = "Development", SortOrder = 45)]
+        public bool enableAcceleratedChildhood = true;
+
+        [ModSetting("Acceleration Cutoff Age", Tooltip = "The age until which accelerated aging applies (Default: 14).", Category = "Development", MinValue = 5, MaxValue = 18, StepSize = 1, SortOrder = 46)]
+        public int childhoodAccelerationCutoffAge = 14;
+
+        // ====================================================================
         // AGING SPEED
         // ====================================================================
 

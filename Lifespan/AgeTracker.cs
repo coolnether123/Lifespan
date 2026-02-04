@@ -2,6 +2,7 @@ using ModAPI.Core;
 using ModAPI.Saves;
 using ModAPI.Util;
 using ModAPI.Events;
+using HarmonyLib;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -20,6 +21,8 @@ namespace Lifespan
         private readonly IPluginContext _ctx;
         private readonly System.Random _random;
         private AgeData _currentAgeData;
+        private AgeDataSerializable _saveContainer; // v1.2 persistent container
+        private IModLogger Log => _log;
 
         public AgeTracker(IPluginContext ctx, LifespanConfig config)
         {
@@ -28,12 +31,17 @@ namespace Lifespan
             _log = ctx.Log;
             _currentAgeData = new AgeData();
             _random = new System.Random();
+            
+            // Register for automatic v1.2 isolated save data
+            _saveContainer = new AgeDataSerializable();
+            _ctx.SaveSystem.RegisterModData("LifeSpan.AgeData", _saveContainer);
         }
 
         public void Reset()
         {
-            LifespanLoggerExtensions.Debug(_log, "[AgeTracker] Resetting tracking data for fresh session.");
+            Log.Debug("Resetting tracking data for fresh session.");
             _currentAgeData = new AgeData();
+            _saveContainer = new AgeDataSerializable(); // Clear container too
         }
 
         public int AdultAgeWeeks => _config.adultAgeYears * 52;
@@ -212,7 +220,7 @@ namespace Lifespan
             // New member - initialize using Gaussian distribution
             int initialAge = GenerateInitialAge(member, member.isChild);
             _currentAgeData.familyMemberAges[memberId] = initialAge;
-            if (LifespanLoggerExtensions.VerboseEnabled) _log.Info($"[Lifespan] Initialized age for {member.firstName} to {initialAge / 52} years (ID: {memberId}).");
+            if (Log.IsDebugEnabled) _log.Info($"Initialized age for {member.firstName} to {initialAge / 52} years (ID: {memberId}).");
             
             // Fire event for other mods
             ModEventBus.Publish("Lifespan.AgeInitialized", new AgeChangedArgs(member, initialAge, 0));
@@ -267,7 +275,7 @@ namespace Lifespan
 
             int memberId = member.GetId();
             _currentAgeData.familyMemberAges[memberId] = Math.Max(0, weeks);
-            if (LifespanLoggerExtensions.VerboseEnabled) _log.Info($"[Lifespan] Manual age override: {member.firstName} set to {weeks / 52} years.");
+            if (Log.IsDebugEnabled) _log.Info($"Manual age override: {member.firstName} set to {weeks / 52} years.");
         }
 
         /// <summary>
@@ -289,15 +297,35 @@ namespace Lifespan
 
         /// <summary>
         /// Increments the age of a family member by a specific amount of weeks.
+        /// <summary>
+        /// Increments the age of a family member by a specific amount of weeks.
         /// Returns the new age in weeks.
         /// </summary>
+
+        /// <summary>
+        /// Returns a list of all external character IDs currently tracked.
+        /// Useful for iteration during aging checks.
+        /// </summary>
+        public List<int> GetAllTrackedExternalIds()
+        {
+            return new List<int>(_currentAgeData.externalCharacterAges.Keys);
+        }
         public int IncrementAge(FamilyMember member, int weeks)
         {
             if (object.ReferenceEquals(member, null)) return 0;
 
             // GetAgeWeeks handles initialization if needed
             int currentAge = GetAgeWeeks(member);
-            int newAge = currentAge + weeks;
+            
+            // Accelerated Childhood logic: 2x speed until cutoff
+            int increment = weeks;
+            if (_config.enableAcceleratedChildhood && (currentAge / 52) < _config.childhoodAccelerationCutoffAge)
+            {
+                increment *= 2;
+                if (Log.IsDebugEnabled) Log.Debug($"[AgeTracker] Fast-aging applied to {member.firstName}: {weeks} -> {increment} weeks.");
+            }
+
+            int newAge = currentAge + increment;
             
             int memberId = member.GetId();
             _currentAgeData.familyMemberAges[memberId] = newAge;
@@ -305,10 +333,10 @@ namespace Lifespan
             // Log if a new year is reached
             if (newAge / 52 > currentAge / 52)
             {
-                if (LifespanLoggerExtensions.VerboseEnabled) _log.Info($"[Lifespan] BIRTHDAY! {member.firstName} is now {newAge / 52} years old.");
+                if (Log.IsDebugEnabled) _log.Info($"BIRTHDAY! {member.firstName} is now {newAge / 52} years old.");
             }
 
-            if (LifespanLoggerExtensions.VerboseEnabled) LifespanLoggerExtensions.Debug(_log, $"{member.firstName} aged to {newAge} weeks (+{weeks}).");
+            if (Log.IsDebugEnabled) Log.Debug($"{member.firstName} aged to {newAge} weeks (+{increment}).");
 
             return newAge;
         }
@@ -320,7 +348,7 @@ namespace Lifespan
         {
             int ageWeeks = GetAgeWeeks(member);
             bool isElder = ageWeeks >= (_config.elderAgeYears * 52);
-            if (isElder) LifespanLoggerExtensions.Debug(_log, $"[AgeTracker] {member.firstName} is an elder ({ageWeeks / 52}y).");
+            if (isElder) Log.Debug($"{member.firstName} is an elder ({ageWeeks / 52}y).");
             return isElder;
         }
 
@@ -330,20 +358,29 @@ namespace Lifespan
         /// </summary>
         public void SaveAgeData()
         {
-            LifespanLoggerExtensions.Debug(_log, "[AgeTracker] SaveAgeData() started.");
+            Log.Debug("Preparing age data for SaveSystem.");
             try
             {
-                // Sync current members before saving to ensure everything is up to date
                 SyncWithFamilyManager();
 
-                var serializableData = _currentAgeData.ToSerializable();
-                _ctx.SaveData("LifeSpan.AgeData", serializableData);
-                if (LifespanLoggerExtensions.VerboseEnabled) _log.Info($"[Lifespan] Persisted age data for {serializableData.ages.Count} members and {serializableData.externalAges.Count} NPCs.");
-                if (LifespanLoggerExtensions.VerboseEnabled) LifespanLoggerExtensions.Debug(_log, $"Records: {serializableData.deathDays.Count} deaths, {serializableData.illnesses.Count} illnesses.");
+                // Update the registered container. SaveSystem handles the actual writing to disk.
+                var freshData = _currentAgeData.ToSerializable();
+                
+                // Overwrite the container managed by v1.2 SaveSystem
+                _saveContainer.ages = freshData.ages;
+                _saveContainer.externalAges = freshData.externalAges;
+                _saveContainer.illnesses = freshData.illnesses;
+                _saveContainer.greyProfiles = freshData.greyProfiles;
+                _saveContainer.developmentGenes = freshData.developmentGenes;
+                _saveContainer.onsetData = freshData.onsetData;
+                _saveContainer.deathDays = freshData.deathDays;
+                _saveContainer.deathAges = freshData.deathAges;
+
+                if (Log.IsDebugEnabled) _log.Info($"Synced {freshData.ages.Count} members and {freshData.externalAges.Count} NPCs to save container.");
             }
             catch (Exception ex)
             {
-                _log.Error($"[Lifespan] Failed to save age data: {ex.Message}");
+                _log.Error($"Failed to prepare save data: {ex.Message}");
             }
         }
 
@@ -367,25 +404,37 @@ namespace Lifespan
         /// </summary>
         public void LoadAgeData()
         {
-            LifespanLoggerExtensions.Debug(_log, "[AgeTracker] LoadAgeData() started.");
+            Log.Debug("Hydrating age data from SaveSystem container.");
             try
             {
-                AgeDataSerializable serializableData;
-                if (_ctx.LoadData("LifeSpan.AgeData", out serializableData))
+                // In v1.2, _saveContainer is automatically loaded by SaveSystem before OnAfterLoad
+                if (_saveContainer != null && (_saveContainer.ages.Count > 0 || _saveContainer.externalAges.Count > 0))
                 {
-                    _currentAgeData = AgeData.FromSerializable(serializableData);
-                    LifespanLoggerExtensions.Debug(_log, $"DATA LOADED: Found records for {_currentAgeData.familyMemberAges.Count} members.");
+                    _currentAgeData = AgeData.FromSerializable(_saveContainer);
+                    Log.Debug($"Metadata restored for {_currentAgeData.familyMemberAges.Count} members.");
                 }
                 else
                 {
-                    _log.Warn("[Lifespan] DATA MISSING: No age records found in save file. Assuming NEW Lifespan save or DATA LOSS.");
-                    _currentAgeData = new AgeData();
-                    InitializeExistingMembers();
+                    _log.Warn("No records found in v1.2 save container. Check for legacy data...");
+                    
+                    // Fallback to legacy v1.1 data if available
+                    AgeDataSerializable legacyData;
+                    if (_ctx.LoadData("LifeSpan.AgeData", out legacyData))
+                    {
+                        Log.Info("Migrated legacy v1.1 age data to v1.2 container.");
+                        _currentAgeData = AgeData.FromSerializable(legacyData);
+                    }
+                    else
+                    {
+                        Log.Info("Starting fresh age data for session.");
+                        _currentAgeData = new AgeData();
+                        InitializeExistingMembers();
+                    }
                 }
             }
             catch (Exception ex)
             {
-                _log.Error($"[Lifespan] CRITICAL FAILURE loading age data: {ex.Message}");
+                _log.Error($"CRITICAL FAILURE loading age data: {ex.Message}");
                 _currentAgeData = new AgeData();
                 InitializeExistingMembers();
             }
@@ -397,7 +446,7 @@ namespace Lifespan
             var members = FamilyManager.Instance.GetAllFamilyMembers();
             if (members == null) return;
 
-            LifespanLoggerExtensions.Debug(_log, "[AgeTracker] Initializing members... (This should only happen once per save!)");
+            if (Log.IsDebugEnabled) Log.Debug("[AgeTracker] Initializing members... (This should only happen once per save!)");
             foreach (var member in members)
             {
                 if (!object.ReferenceEquals(member, null) && !member.isDead)
@@ -405,7 +454,7 @@ namespace Lifespan
                     // If the ID is somehow already tracked, GetAgeWeeks won't overwrite it.
                     // But if we are here, _currentAgeData is likely empty.
                     int newAge = GetAgeWeeks(member);
-                    LifespanLoggerExtensions.Debug(_log, $"Generated FRESH age for {member.firstName}: {newAge / 52} years.");
+                    Log.Debug($"Generated FRESH age for {member.firstName}: {newAge / 52} years.");
                 }
             }
         }
@@ -438,7 +487,7 @@ namespace Lifespan
             List<int> toRemove = _currentAgeData.familyMemberAges.Keys.Where(id => !validIds.Contains(id)).ToList();
             if (toRemove.Count > 0)
             {
-                LifespanLoggerExtensions.Debug(_log, $"[AgeTracker] Cleaning up {toRemove.Count} IDs that no longer exist.");
+                if (Log.IsDebugEnabled) Log.Debug($"[AgeTracker] Cleaning up {toRemove.Count} IDs that no longer exist.");
             }
             foreach (var id in toRemove)
             {
@@ -448,7 +497,7 @@ namespace Lifespan
 
             if (toRemove.Count > 0)
             {
-                if (LifespanLoggerExtensions.VerboseEnabled) _log.Info($"Cleaned up age tracking for {toRemove.Count} members no longer in family.");
+                if (Log.IsDebugEnabled) _log.Info($"Cleaned up age tracking for {toRemove.Count} members no longer in family.");
             }
         }
 
@@ -470,7 +519,7 @@ namespace Lifespan
             if (!list.Contains(illnessId))
             {
                 list.Add(illnessId);
-                LifespanLoggerExtensions.Debug(_log, $"[AgeTracker] Added illness {illnessId} to {member.firstName}.");
+                if (Log.IsDebugEnabled) Log.Debug($"[AgeTracker] Added illness {illnessId} to {member.firstName}.");
             }
         }
 
@@ -486,7 +535,7 @@ namespace Lifespan
                 {
                     _currentAgeData.onsetTiming[id].Remove(illnessId);
                 }
-                LifespanLoggerExtensions.Debug(_log, $"[AgeTracker] Removed illness {illnessId} from {member.firstName}.");
+                if (Log.IsDebugEnabled) Log.Debug($"[AgeTracker] Removed illness {illnessId} from {member.firstName}.");
             }
         }
 
@@ -529,13 +578,14 @@ namespace Lifespan
                 {
                     existing.Gene = GreyingGene.GenerateRandom(_random);
                     
-                    LifespanLoggerExtensions.Debug(_log, $"[AgeTracker] Migrated legacy GreyProfile for {member.firstName} to use GreyingGene.");
+                    if (Log.IsDebugEnabled) Log.Debug($"[AgeTracker] Migrated legacy GreyProfile for {member.firstName} to use GreyingGene.");
                 }
                 return existing;
             }
 
             // Generate new profile
-            Color currentHair = ReflectionHelper.GetField<Color>(member, "m_hairColor");
+            Color currentHair = Color.black;
+            try { currentHair = Traverse.Create(member).Field("m_hairColor").GetValue<Color>(); } catch {}
             // If checking fails, default to black/grey
             if (currentHair == default(Color)) currentHair = Color.black; 
 
@@ -546,7 +596,7 @@ namespace Lifespan
             profile.Gene = GreyingGene.GenerateRandom(_random);
 
             _currentAgeData.greyProfiles[id] = profile;
-            LifespanLoggerExtensions.Debug(_log, $"[AgeTracker] Generated Grey Profile for {member.firstName}. Start: {profile.Gene.StartAge}y, Duration: {profile.Gene.DurationYears}y, Coverage: {profile.Gene.MaxCoverage:P0}.");
+            if (Log.IsDebugEnabled) Log.Debug($"[AgeTracker] Generated Grey Profile for {member.firstName}. Start: {profile.Gene.StartAge}y, Duration: {profile.Gene.DurationYears}y, Coverage: {profile.Gene.MaxCoverage:P0}.");
 
             return profile;
         }
@@ -569,7 +619,7 @@ namespace Lifespan
             var gene = DevelopmentGene.GenerateRandom(_random);
             
             _currentAgeData.developmentGenes[id] = gene;
-            LifespanLoggerExtensions.Debug(_log, $"[AgeTracker] Generated Dev Gene for {member.firstName}. Potentials: Pre-A: {gene.PreAdultPotential}, Post-A: {gene.PostAdultPotential}, Pre-E: {gene.PreElderPotential}, Post-E: {gene.PostElderPotential}.");
+            if (Log.IsDebugEnabled) Log.Debug($"[AgeTracker] Generated Dev Gene for {member.firstName}. Potentials: Pre-A: {gene.PreAdultPotential}, Post-A: {gene.PostAdultPotential}, Pre-E: {gene.PreElderPotential}, Post-E: {gene.PostElderPotential}.");
 
             return gene;
         }

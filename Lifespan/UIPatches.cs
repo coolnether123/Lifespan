@@ -1,6 +1,6 @@
 using HarmonyLib;
 using ModAPI.Core;
-using ModAPI.Reflection;
+using ModAPI.Core;
 using System;
 using UnityEngine;
 
@@ -21,8 +21,8 @@ namespace Lifespan
         {
             if (!_cache.ContainsKey(tooltip))
             {
-                var member = ReflectionHelper.GetField<FamilyMember>(tooltip, "m_member");
-                var label = ReflectionHelper.GetField<UILabel>(tooltip, "m_name");
+                var member = Traverse.Create(tooltip).Field("m_member").GetValue<FamilyMember>();
+                var label = Traverse.Create(tooltip).Field("m_name").GetValue<UILabel>();
                 _cache[tooltip] = new TooltipData { Member = member, Label = label };
             }
         }
@@ -40,25 +40,25 @@ namespace Lifespan
 
         public static bool TryGetData(UI_CharacterTooltip tooltip, out FamilyMember member, out UILabel label)
         {
-            if (LifespanLoggerExtensions.VerboseEnabled) MMLog.Write("[DEBUG] [TooltipCache] TryGetData called.");
+            if (LifespanPlugin.Instance.Log.IsDebugEnabled) LifespanPlugin.Instance.Log.Debug("[TooltipCache] TryGetData called.");
             member = null;
             label = null;
             if (_cache.TryGetValue(tooltip, out var data))
             {
                 member = data.Member;
                 label = data.Label;
-                if (LifespanLoggerExtensions.VerboseEnabled) MMLog.Write("[DEBUG] [TooltipCache] Found data in cache.");
+                if (LifespanPlugin.Instance.Log.IsDebugEnabled) LifespanPlugin.Instance.Log.Debug("[TooltipCache] Found data in cache.");
                 return true;
             }
             
-            if (LifespanLoggerExtensions.VerboseEnabled) MMLog.Write("[DEBUG] [TooltipCache] No cache entry found. Using reflection fallback.");
-            member = ReflectionHelper.GetField<FamilyMember>(tooltip, "m_member");
-            label = ReflectionHelper.GetField<UILabel>(tooltip, "m_name");
-            if (LifespanLoggerExtensions.VerboseEnabled) MMLog.Write($"[DEBUG] [TooltipCache] Reflection result: member is {(member == null ? "null" : "found")}, label is {(label == null ? "null" : "found")}");
+            if (LifespanPlugin.Instance.Log.IsDebugEnabled) LifespanPlugin.Instance.Log.Debug("[TooltipCache] No cache entry found. Using reflection fallback.");
+            member = Traverse.Create(tooltip).Field("m_member").GetValue<FamilyMember>();
+            label = Traverse.Create(tooltip).Field("m_name").GetValue<UILabel>();
+            if (LifespanPlugin.Instance.Log.IsDebugEnabled) LifespanPlugin.Instance.Log.Debug($"[TooltipCache] Reflection result: member is {(member == null ? "null" : "found")}, label is {(label == null ? "null" : "found")}");
             
             if (member != null && label != null)
             {
-                if (LifespanLoggerExtensions.VerboseEnabled) MMLog.Write("[DEBUG] [TooltipCache] Caching new data.");
+                if (LifespanPlugin.Instance.Log.IsDebugEnabled) LifespanPlugin.Instance.Log.Debug("[TooltipCache] Caching new data.");
                 _cache[tooltip] = new TooltipData { Member = member, Label = label };
             }
                 
@@ -70,7 +70,7 @@ namespace Lifespan
     {
         public static void Postfix(UI_CharacterTooltip __instance)
         {
-            if (LifespanLoggerExtensions.VerboseEnabled) MMLog.Write("[DEBUG] [UIPatch] Postfix entered.");
+            if (LifespanPlugin.Instance.Log.IsDebugEnabled) LifespanPlugin.Instance.Log.Debug("[UIPatch] Postfix entered.");
             try
             {
                 FamilyMember member;
@@ -78,33 +78,33 @@ namespace Lifespan
                 
                 if (!TooltipCache.TryGetData(__instance, out member, out nameLabel))
                 {
-                    if (LifespanLoggerExtensions.VerboseEnabled) MMLog.Write("[DEBUG] [UIPatch] TryGetData returned false. Exiting.");
+                    if (LifespanPlugin.Instance.Log.IsDebugEnabled) LifespanPlugin.Instance.Log.Debug("[UIPatch] TryGetData returned false. Exiting.");
                     return;
                 }
 
                 if (member == null || nameLabel == null)
                 {
-                    if (LifespanLoggerExtensions.VerboseEnabled) MMLog.Write("[DEBUG] [UIPatch] Member or Label is null after TryGetData. Exiting.");
+                    if (LifespanPlugin.Instance.Log.IsDebugEnabled) LifespanPlugin.Instance.Log.Debug("[UIPatch] Member or Label is null after TryGetData. Exiting.");
                     return;
                 }
 
                 if (AgingPatches.Tracker == null)
                 {
-                    if (LifespanLoggerExtensions.VerboseEnabled) MMLog.Write("[DEBUG] [UIPatch] AgingPatches.Tracker is null. Exiting.");
+                    if (LifespanPlugin.Instance.Log.IsDebugEnabled) LifespanPlugin.Instance.Log.Debug("[UIPatch] AgingPatches.Tracker is null. Exiting.");
                     return;
                 }
 
                 int ageWeeks = AgingPatches.Tracker.GetAgeWeeks(member);
                 int ageYears = ageWeeks / 52;
-                if (LifespanLoggerExtensions.VerboseEnabled) MMLog.Write($"[DEBUG] [UIPatch] Calculated age for {member.firstName}: {ageYears} years ({ageWeeks} weeks).");
+                if (LifespanPlugin.Instance.Log.IsDebugEnabled) LifespanPlugin.Instance.Log.Debug($"[UIPatch] Calculated age for {member.firstName}: {ageYears} years ({ageWeeks} weeks).");
 
                 string currentText = nameLabel.text;
                 string ageSuffix = $" (Age: {ageYears})";
-                if (LifespanLoggerExtensions.VerboseEnabled) MMLog.Write($"[DEBUG] [UIPatch] Current label text: '{currentText}'. Desired suffix: '{ageSuffix}'.");
+                if (LifespanPlugin.Instance.Log.IsDebugEnabled) LifespanPlugin.Instance.Log.Debug($"[UIPatch] Current label text: '{currentText}'. Desired suffix: '{ageSuffix}'.");
 
                 if (currentText.EndsWith(ageSuffix)) 
                 {
-                    if (LifespanLoggerExtensions.VerboseEnabled) MMLog.Write("[DEBUG] [UIPatch] Text already correct. Exiting.");
+                    if (LifespanPlugin.Instance.Log.IsDebugEnabled) LifespanPlugin.Instance.Log.Debug("[UIPatch] Text already correct. Exiting.");
                     return;
                 }
 
@@ -123,12 +123,13 @@ namespace Lifespan
                     newText = currentText + ageSuffix;
                 }
 
-                if (LifespanLoggerExtensions.VerboseEnabled) MMLog.Write($"[DEBUG] [UIPatch] Setting new text: '{newText}'.");
+                if (LifespanPlugin.Instance.Log.IsDebugEnabled) LifespanPlugin.Instance.Log.Debug($"[UIPatch] Setting new text: '{newText}'.");
                 nameLabel.text = newText;
             }
             catch (Exception ex)
             {
-                if (LifespanLoggerExtensions.VerboseEnabled) MMLog.Write("[DEBUG] UIPatch Error: " + ex.ToString());
+                // Note: Don't check for DebugEnabled for Errors, usually
+                LifespanPlugin.Instance.Log.Error("UIPatch Error: " + ex.ToString());
             }
         }
     }

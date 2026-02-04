@@ -1,7 +1,8 @@
 using System;
 using HarmonyLib;
 using ModAPI.Core;
-using ModAPI.Reflection;
+using HarmonyLib;
+using ModAPI.Core;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -54,7 +55,7 @@ namespace Lifespan
         {
             public static void Postfix()
             {
-                MMLog.Write("[DEBUG] AgingPatches: GameTime.Awake detected. Re-hooking events and resetting managers.");
+                LifespanPlugin.Instance.Log.Debug("GameTime.Awake detected. Re-hooking events and resetting managers.");
                 
                 // Re-hook events
                 GameTime.newWeek -= HandleNewWeek;
@@ -71,13 +72,13 @@ namespace Lifespan
 
         private static void HandleNewWeek()
         {
-            if (LifespanLoggerExtensions.VerboseEnabled) MMLog.Write("[DEBUG] AgingPatches: GameTime.newWeek fired!");
+            if (LifespanPlugin.Instance.Log.IsDebugEnabled) LifespanPlugin.Instance.Log.Debug("GameTime.newWeek fired!");
             OnNewWeekCallback?.Invoke();
         }
 
         private static void HandleNewDay()
         {
-            if (LifespanLoggerExtensions.VerboseEnabled) MMLog.Write("[DEBUG] AgingPatches: GameTime.newDay fired!");
+            if (LifespanPlugin.Instance.Log.IsDebugEnabled) LifespanPlugin.Instance.Log.Debug("GameTime.newDay fired!");
             OnNewDayCallback?.Invoke();
         }
 
@@ -97,9 +98,9 @@ namespace Lifespan
 
                     if (shouldBeAdult && member.isChild)
                     {
-                        if (LifespanLoggerExtensions.VerboseEnabled) MMLog.Write("[DEBUG] AgingPatches: Postfix_SaveLoadCharacter - Forcing adult status for " + member.firstName);
+                        if (LifespanPlugin.Instance.Log.IsDebugEnabled) LifespanPlugin.Instance.Log.Info($"Forcing adult status for {member.firstName} on load.");
                         // Force adult status
-                        Safe.SetField(member, "m_child", false);
+                        Traverse.Create(member).Field("m_child").SetValue(false);
                     }
                     
                     // Re-apply illness stat modifiers
@@ -129,7 +130,7 @@ namespace Lifespan
                 string extra = __instance.lastDamageExtra;
                 if (extra == "Old age" || extra == "Natural causes" || extra == "Heart Failure")
                 {
-                    if (LifespanLoggerExtensions.VerboseEnabled) MMLog.Write("[DEBUG] AgingPatches: OnFatalDamageTaken - Bypassing unconscious state for natural death: " + extra);
+                    if (LifespanPlugin.Instance.Log.IsDebugEnabled) LifespanPlugin.Instance.Log.Debug($"Bypassing unconscious state for natural death: {extra}");
                     __result = true; // Return true to trigger immediate death (OnDeath)
                     return false;    // Skip original method
                 }
@@ -143,8 +144,8 @@ namespace Lifespan
 
             var illnesses = Tracker.GetIllnesses(member);
             if (illnesses == null || illnesses.Count == 0) return;
-
-            if (LifespanLoggerExtensions.VerboseEnabled) MMLog.Write("[DEBUG] AgingPatches: ApplyIllnessStatModifiers for " + member.firstName + " (Illnesses: " + illnesses.Count + ")");
+ 
+            if (LifespanPlugin.Instance.Log.IsDebugEnabled) LifespanPlugin.Instance.Log.Debug($"ApplyIllnessStatModifiers for {member.firstName} (Illnesses: {illnesses.Count})");
             
             int intMod = 0;
             int strMod = 0;
@@ -154,18 +155,18 @@ namespace Lifespan
                 if (id == ElderIllnessManager.ILLNESS_DEMENTIA)
                 {
                     intMod -= 3;
-                    if (LifespanLoggerExtensions.VerboseEnabled) MMLog.Write("[DEBUG] AgingPatches: Dementia detected, applying int modifier.");
+                    if (LifespanPlugin.Instance.Log.IsDebugEnabled) LifespanPlugin.Instance.Log.Debug("Dementia detected, applying Intelligence modifier.");
                 }
                 if (id == ElderIllnessManager.ILLNESS_FRAILTY)
                 {
                     strMod -= 2;
-                    if (LifespanLoggerExtensions.VerboseEnabled) MMLog.Write("[DEBUG] AgingPatches: Frailty detected, applying str modifier.");
+                    if (LifespanPlugin.Instance.Log.IsDebugEnabled) LifespanPlugin.Instance.Log.Debug("Frailty detected, applying Strength modifier.");
                 }
             }
 
             member.BaseStats.Intelligence.SetLevelModifier(intMod);
             member.BaseStats.Strength.SetLevelModifier(strMod);
-            if (LifespanLoggerExtensions.VerboseEnabled) MMLog.Write("[DEBUG] AgingPatches: Final modifiers applied - Int: " + intMod + ", Str: " + strMod);
+            if (LifespanPlugin.Instance.Log.IsDebugEnabled) LifespanPlugin.Instance.Log.Debug($"Final modifiers applied for {member.firstName} - Int: {intMod}, Str: {strMod}");
         }
     }
 }

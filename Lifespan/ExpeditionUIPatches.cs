@@ -1,6 +1,6 @@
 using HarmonyLib;
 using ModAPI.Core;
-using ModAPI.Reflection;
+using ModAPI.Core;
 using System;
 using System.Collections.Generic;
 using UnityEngine;
@@ -18,31 +18,31 @@ namespace Lifespan
                     // Refresh the party list. 
                     // This fixes the bug where deaths during radio sequences leave "ghost" pages in the UI.
                     var parties = ExplorationManager.Instance.GetAllExplorarionParties();
-                    ReflectionHelper.SetField(__instance, "m_allParties", parties);
+                    Traverse.Create(__instance).Field("m_allParties").SetValue(parties);
 
                     int count = parties.Count;
-                    int currentIndex = ReflectionHelper.GetField<int>(__instance, "m_currentPartyIndex");
+                    int currentIndex = Traverse.Create(__instance).Field("m_currentPartyIndex").GetValue<int>();
 
                     // Clamp index
                     if (currentIndex >= count)
                     {
                         currentIndex = Math.Max(0, count - 1);
-                        ReflectionHelper.SetField(__instance, "m_currentPartyIndex", currentIndex);
+                        Traverse.Create(__instance).Field("m_currentPartyIndex").SetValue(currentIndex);
                     }
 
                     // Sync the Map UI
-                    UI_ExpeditionMap mapUI = ReflectionHelper.GetField<UI_ExpeditionMap>(__instance, "m_mapUI");
+                    UI_ExpeditionMap mapUI = Traverse.Create(__instance).Field("m_mapUI").GetValue<UI_ExpeditionMap>();
                     if (mapUI != null)
                     {
                         mapUI.shownPartyIndex = currentIndex;
                     }
 
                     // Refresh the visual elements (labels, health bars, etc.)
-                    ReflectionHelper.InvokeMethod(__instance, "UpdateUI");
+                    Traverse.Create(__instance).Method("UpdateUI").GetValue();
                 }
                 catch (Exception ex)
                 {
-                   MMLog.Write($"[Lifespan] Expedition UI refresh error: {ex.Message}");
+                   LifespanPlugin.Instance.Log.Error($"Expedition UI refresh error: {ex.Message}");
                 }
             }
         }

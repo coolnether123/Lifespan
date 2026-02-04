@@ -1,6 +1,7 @@
 using NUnit.Framework;
 using Lifespan;
 using ModAPI.Core;
+using ModAPI.Saves;
 using Moq;
 using System;
 using System.Collections.Generic;
@@ -24,6 +25,10 @@ namespace Lifespan.Tests
             _mockCtx = new Mock<IPluginContext>();
             _mockLog = new Mock<IModLogger>();
             _mockCtx.Setup(c => c.Log).Returns(_mockLog.Object);
+
+            var mockSave = new Mock<ISaveSystem>();
+            _mockCtx.Setup(c => c.SaveSystem).Returns(mockSave.Object);
+
             _config = new LifespanConfig();
             
             // Standard config for testing (Updated to User Request: Target 6 years)

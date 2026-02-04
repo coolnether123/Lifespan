@@ -1,5 +1,5 @@
 using ModAPI.Core;
-using ModAPI.Reflection;
+using HarmonyLib;
 
 namespace Lifespan
 {
@@ -12,18 +12,18 @@ namespace Lifespan
             if (character is FamilyMember fm)
             {
                 // FamilyMember has a familyId field (sometimes exposed as GetId() method or property)
-                // We use reflection via Safe helper to be robust
-                return Safe.GetField<int>(fm, "familyId");
+                // We use reflection via Traverse to be robust
+                return Traverse.Create(fm).Field("familyId").GetValue<int>();
             }
             
             if (character is NpcVisitor npc)
             {
                 // NpcVisitor has m_npcId field
-                return Safe.GetField<int>(npc, "m_npcId");
+                return Traverse.Create(npc).Field("m_npcId").GetValue<int>();
             }
 
             // Fallback: try generic "id" field
-            return Safe.GetField<int>(character, "id");
+            return Traverse.Create(character).Field("id").GetValue<int>();
         }
     }
 }

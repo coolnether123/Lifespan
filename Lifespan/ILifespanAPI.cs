@@ -17,6 +17,16 @@ namespace Lifespan
         Custom // For other mods to define their own logic if needed
     }
 
+    public enum ChildStage
+    {
+        Newborn,    // Immobile, needs care
+        Child,      // Mobile, simple jobs
+        PreTeen,    // Expeditions with adult
+        Teen,       // Full expeditions
+        Adult,      // Full capabilities
+        Elder       // Full capabilities
+    }
+
     /// <summary>
     /// Public API interface for the Lifespan mod.
     /// Other mods can access this via ModAPIRegistry.
@@ -99,5 +109,47 @@ namespace Lifespan
         /// Fired when an NPC's age is explicitly incremented via IncrementNPCAge.
         /// </summary>
         event System.Action<BaseCharacter, int> OnCharacterAged;
+        
+        /// <summary>
+        /// Fired BEFORE a character is aged.
+        /// Return FALSE to cancel the aging process for this character (e.g. for cryostasis).
+        /// </summary>
+        event System.Func<BaseCharacter, bool> OnBeforeCharacterAged;
+
+        /// <summary>
+        /// Iterates through all tracked external characters (NPCs) and increments their age by the specified weeks.
+        /// This allows Faction mods to age their entire population in one call, while respecting OnBeforeCharacterAged cancellation.
+        /// </summary>
+        void UpdateExternalCharacters(int weeks);
+
+        /// <summary>
+        /// Sets the initial genetic development potential for a character (usually a newborn).
+        /// This controls how many stats they can gain during childhood (Pre-Adult stage).
+        /// </summary>
+        void SetInitialDevelopmentPotential(FamilyMember member, int potential);
+
+        /// <summary>
+        /// Gets the current developmental stage of a child.
+        /// </summary>
+        ChildStage GetChildStage(FamilyMember member);
+
+        // ===== POPULATION STATISTICS API =====
+
+        /// <summary>
+        /// Calculates the total population count tracked by the AgeTracker, 
+        /// optionally filtered by a predicate on the character details.
+        /// Useful for Faction mods to determine colony size.
+        /// </summary>
+        int CalculateTotalPopulation(System.Func<BaseCharacter, bool> filter = null);
+
+        /// <summary>
+        /// Gets the number of tracked characters within a specific age range (in years).
+        /// </summary>
+        int GetPopulationInAgeRange(int minAgeYears, int maxAgeYears);
+
+        /// <summary>
+        /// Retrieves a list of all FamilyMembers currently in a specific developmental stage.
+        /// </summary>
+        List<FamilyMember> GetCharactersByStage(ChildStage stage);
     }
 }

@@ -36,6 +36,7 @@ namespace Lifespan
             { BaseStats.StatType.Charisma, new[] { "I feel like I can talk to anyone!", "People seem to listen to me more!" } },
             { BaseStats.StatType.Perception, new[] { "I notice things I never saw before!", "The world looks clearer somehow!" } }
         };
+        private IModLogger Log => _log;
 
         public DevelopmentGeneManager(IPluginContext ctx, LifespanConfig config, AgeTracker ageTracker)
         {
@@ -84,19 +85,19 @@ namespace Lifespan
             int currentAgeYears = currentAgeWeeks / 52;
             LifeStage stage = DetermineLifeStage(currentAgeYears);
 
-            LifespanLoggerExtensions.Debug(_log, $"[DevGene] Processing {member.firstName} (Age {currentAgeYears}y, Stage: {stage}, Interval: {weeksAgedThisInterval}w)");
+            Log.Debug($"Processing {member.firstName} (Age {currentAgeYears}y, Stage: {stage}, Interval: {weeksAgedThisInterval}w)");
 
             // Check if the character has any remaining development potential for this stage.
             int remainingPotential = gene.GetRemainingPotential(stage);
             if (remainingPotential <= 0)
             {
-                LifespanLoggerExtensions.Debug(_log, $"[DevGene] {member.firstName} has no potential left for {stage}.");
+                Log.Debug($"{member.firstName} has no potential left for {stage}.");
                 return;
             }
 
             // Calculate progress towards the next milestone.
             int yearsToMilestone = GetYearsToMilestone(currentAgeYears, stage);
-            LifespanLoggerExtensions.Debug(_log, $"[DevGene] {remainingPotential} potential remaining, {yearsToMilestone} years to milestone.");
+            Log.Debug($"{remainingPotential} potential remaining, {yearsToMilestone} years to milestone.");
 
             // 1. FORFEIT CHECK: Risk of losing potential when very close to a milestone without successful gains.
             if (yearsToMilestone <= _config.forfeitWindowYears && remainingPotential > 0)
@@ -107,7 +108,7 @@ namespace Lifespan
 
                 if ((float)_random.NextDouble() < scaledForfeitChance)
                 {
-                    _log.Info($"[Lifespan] {member.firstName} failed to reach their full potential for the {stage} stage.");
+                    Log.Info($"{member.firstName} failed to reach their full potential for the {stage} stage.");
                     gene.ForfeitPotential(stage);
                     return;
                 }
@@ -180,7 +181,7 @@ namespace Lifespan
             {
                 gainAmount *= _config.sparkMultiplier;
                 sparkTriggered = true;
-                _log.Info($"[Lifespan] SPARK! {member.firstName} had a developmental breakthrough (+{gainAmount} {statType})!");
+                Log.Info($"SPARK! {member.firstName} had a developmental breakthrough (+{gainAmount} {statType})!");
             }
 
             // Grant the experience increase.
@@ -226,7 +227,7 @@ namespace Lifespan
             if (xpToAdd > 0)
             {
                 stat.IncreaseExp(xpToAdd);
-                LifespanLoggerExtensions.Debug(_log, $"[DevGene] Granted {xpToAdd} XP to {statType} for {member.firstName} to reach level {targetLevel}.");
+                Log.Debug($"Granted {xpToAdd} XP to {statType} for {member.firstName} to reach level {targetLevel}.");
             }
         }
 

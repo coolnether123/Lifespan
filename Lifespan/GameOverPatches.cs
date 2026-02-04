@@ -1,6 +1,6 @@
 using HarmonyLib;
 using ModAPI.Core;
-using ModAPI.Reflection;
+using ModAPI.Core;
 using System;
 using System.Reflection;
 using UnityEngine;
@@ -57,8 +57,8 @@ namespace Lifespan
                     // 1. Find the Labels safely
                     UILabel dayLabel = null;
                     
-                    // Use ReflectionHelper since Safe.GetField doesn't exist
-                    dayLabel = ReflectionHelper.GetField<UILabel>(__instance, "dayLabel");
+                    // Use Traverse since Safe.GetField doesn't exist
+                    dayLabel = Traverse.Create(__instance).Field("dayLabel").GetValue<UILabel>();
                     
                     // Fallback: Scan children if reflection failed
                     if (dayLabel == null)
@@ -125,7 +125,7 @@ namespace Lifespan
                 }
                 catch (Exception ex)
                 {
-                    MMLog.Write($"[Lifespan] Obituary UI Error: {ex.Message}");
+                    LifespanPlugin.Instance.Log.Error($"Obituary UI Error: {ex.Message}");
                 }
             }
         }
@@ -141,7 +141,7 @@ namespace Lifespan
                 try
                 {
                     // Find the label safely
-                    UILabel daysLastedLabel = ReflectionHelper.GetField<UILabel>(__instance, "daysLastedLabel");
+                    UILabel daysLastedLabel = Traverse.Create(__instance).Field("daysLastedLabel").GetValue<UILabel>();
                     if (daysLastedLabel != null && AgingPatches.Tracker != null)
                     {
                         // Get the highest death day from our records
@@ -161,12 +161,12 @@ namespace Lifespan
                             daysLastedLabel.text = "They survived until day " + maxDay.ToString();
                         }
                         
-                        MMLog.Write($"[Lifespan] Synced GameOver Survival Counter to Day {maxDay}.");
+                        LifespanPlugin.Instance.Log.Info($"Synced GameOver Survival Counter to Day {maxDay}.");
                     }
                 }
                 catch (Exception ex)
                 {
-                    MMLog.Write($"[Lifespan] GameOver UI sync error: {ex.Message}");
+                    LifespanPlugin.Instance.Log.Error($"GameOver UI sync error: {ex.Message}");
                 }
             }
         }

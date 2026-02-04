@@ -1,5 +1,5 @@
 using ModAPI.Core;
-using ModAPI.Reflection;
+using HarmonyLib;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -23,6 +23,7 @@ namespace Lifespan
             public string Text;
             public bool IsJournal;
             public Priority Priority;
+            public System.Func<bool> Validation;
         }
 
         private readonly Queue<QueuedMessage> _messageQueue = new Queue<QueuedMessage>();
@@ -38,17 +39,18 @@ namespace Lifespan
             _log = log;
         }
 
-        public void Enqueue(FamilyMember member, string text, bool isJournal, Priority priority = Priority.Routine)
+        public void Enqueue(FamilyMember member, string text, bool isJournal, Priority priority = Priority.Routine, System.Func<bool> validation = null)
         {
             _messageQueue.Enqueue(new QueuedMessage 
             { 
                 Member = member, 
                 Text = text, 
                 IsJournal = isJournal,
-                Priority = priority
+                Priority = priority,
+                Validation = validation
             });
             
-            LifespanLoggerExtensions.Debug(_log, $"[DialogueScheduler] Enqueued {priority} message (Queue size: {_messageQueue.Count}).");
+            _log.Debug($"[DialogueScheduler] Enqueued {priority} message (Queue size: {_messageQueue.Count}).");
         }
 
         private delegate float TimeProvider();
@@ -73,9 +75,18 @@ namespace Lifespan
             if (now >= _nextMessageTime)
             {
                 var msg = _messageQueue.Dequeue();
-                ProcessMessage(msg);
                 
-                // Spacing depends on the message we just delivered
+                // VALIDATION CHECK: Run the predicate to see if conditions still apply
+                if (msg.Validation == null || msg.Validation())
+                {
+                    ProcessMessage(msg);
+                }
+                else
+                {
+                    _log.Debug($"[DialogueScheduler] Invalidated message skipped: {msg.Text}");
+                }
+                
+                // Spacing depends on the message we just processed (even if skipped)
                 float baseSpacing = (msg.Priority == Priority.Reactive) ? REACTIVE_SPACING : ROUTINE_SPACING;
                 float spacing = baseSpacing + _randomProvider(0f, 5f);
                 _nextMessageTime = now + spacing;
@@ -90,7 +101,7 @@ namespace Lifespan
                 {
                     try
                     {
-                        ReflectionHelper.InvokeMethod(JournalManager.Instance, "InsertJournalEntry", msg.Text, "", false);
+                        Traverse.Create(JournalManager.Instance).Method("InsertJournalEntry", new object[] { msg.Text, "", false }).GetValue();
                     }
                     catch { }
                 }

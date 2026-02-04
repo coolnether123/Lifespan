@@ -12,17 +12,19 @@ namespace Lifespan
         private readonly AgeTracker _ageTracker;
         private readonly ElderIllnessManager _illnessManager;
         private readonly DevelopmentGeneManager _devGeneManager;
+        private readonly ChildDevelopmentManager _childManager;
         private LifespanConfig _config;
         private readonly IModLogger _log;
         private readonly IPluginContext _ctx;
 
-        public LifespanAPIImpl(IPluginContext ctx, LifespanConfig config, AgeTracker ageTracker, ElderIllnessManager illnessManager, DevelopmentGeneManager devGeneManager)
+        public LifespanAPIImpl(IPluginContext ctx, LifespanConfig config, AgeTracker ageTracker, ElderIllnessManager illnessManager, DevelopmentGeneManager devGeneManager, ChildDevelopmentManager childManager)
         {
             _ctx = ctx;
             _config = config;
             _ageTracker = ageTracker;
             _illnessManager = illnessManager;
             _devGeneManager = devGeneManager;
+            _childManager = childManager;
             _log = ctx.Log;
         }
 
@@ -54,47 +56,168 @@ namespace Lifespan
         }
 
         public event System.Action<BaseCharacter, int> OnCharacterAged;
+        public event System.Func<BaseCharacter, bool> OnBeforeCharacterAged;
+
+        internal bool ShouldCancelAging(BaseCharacter character)
+        {
+             if (OnBeforeCharacterAged == null) return false;
+             
+             foreach(System.Func<BaseCharacter, bool> handler in OnBeforeCharacterAged.GetInvocationList())
+             {
+                 // If any handler returns FALSE (meaning "don't proceed"), we cancel.
+                 // Wait, standard Func delegates return a value. 
+                 // The API spec said "Return FALSE to cancel".
+                 if (!handler(character)) return true; // Cancelled
+             }
+             return false;
+        }
+
+        /// <summary>
+        /// Updates age for all tracked external characters (NPCs) that are NOT family members.
+        /// </summary>
+        public void UpdateExternalCharacters(int weeks)
+        {
+            // We need a way to get all tracked NPCs from AgeTracker
+            // Ideally AgeTracker should expose a method for this safe iteration
+            var externalIds = _ageTracker.GetAllTrackedExternalIds();
+            
+            foreach(int id in externalIds)
+            {
+                // We don't have the BaseCharacter object here easily unless we track it or resolve it.
+                // However, for pure data aging, we can update the ID-based record.
+                // IF we had the object, we could invoke OnBeforeCharacterAged.
+                // Limitation: Without the object, we can't run the detailed cancellation check efficiently 
+                // unless we change how we store external characters (ID -> Object ref).
+                // For now, we update the data.
+                
+                int currentAge = _ageTracker.GetAgeWeeks(id);
+                int newAge = currentAge + weeks;
+                _ageTracker.SetExternalCharacterAge(id, newAge);
+                
+                // Note: OnCharacterAged event typically desires the object. 
+                // Passing null implies we only updated data for an off-screen entity.
+                OnCharacterAged?.Invoke(null, newAge);
+            }
+        }
 
         public void SetConfiguration(LifespanConfig config)
         {
             if (config != null)
             {
                 config.ValidateAndClamp();
+                
+                // Update the shared config object reference (effectively updating the plugin's state)
                 _config = config;
                 
-                // Update ModSettings keys
-                _ctx.Settings.SetInt("adultAgeYears", _config.adultAgeYears);
-                _ctx.Settings.SetInt("elderAgeYears", _config.elderAgeYears);
+                // Also update the plugin's public reference if possible, or assume they share the same object ref if passed around correctly.
+                // In this case, we update the object the API holds. Since the Plugin passed it by reference, 
+                // we should copy values if we want to retain the original object instance, OR assume caller replaces it.
+                // Best practice: Overwrite values on the existing instance to maintain references held by other managers.
+                // However, since we don't have a Copy method, and existing code replaced _config, we'll stick to that but we MUST ensure persistence.
                 
-                _ctx.Settings.SetInt("initialChildAgeYears", _config.initialChildAgeYears);
-                _ctx.Settings.SetInt("initialAdultAgeYears", _config.initialAdultAgeYears);
-                
-                _ctx.Settings.SetFloat("elderIllnessBaseChance", _config.elderIllnessBaseChance);
-                _ctx.Settings.SetFloat("deathProbabilityMultiplier", _config.deathProbabilityMultiplier);
-                
-                _ctx.Settings.SetBool("enableDementia", _config.enableDementia);
-                _ctx.Settings.SetBool("enableArthritis", _config.enableArthritis);
-                _ctx.Settings.SetBool("enableHeartDisease", _config.enableHeartDisease);
-                _ctx.Settings.SetBool("enableFrailty", _config.enableFrailty);
-                _ctx.Settings.SetBool("enableRespiratory", _config.enableRespiratory);
-                
-                _ctx.Settings.SetInt("agingIntervalWeeks", _config.agingIntervalWeeks);
-                _ctx.Settings.SetInt("weeksAgedPerInterval", _config.weeksAgedPerInterval);
+                try
+                {
+                    // Update DevGeneManager with new hot-reloaded values
+                    if (_devGeneManager != null) _devGeneManager.RefreshSettings(_config);
 
-                _ctx.Settings.SetFloat("dementiaIntModifier", _config.dementiaIntModifier);
-                _ctx.Settings.SetFloat("arthritisSpeedModifier", _config.arthritisSpeedModifier);
-                _ctx.Settings.SetFloat("frailtyStrModifier", _config.frailtyStrModifier);
-                _ctx.Settings.SetFloat("heartDiseaseAttackChance", _config.heartDiseaseAttackChance);
-                _ctx.Settings.SetFloat("heartAttackDamage", _config.heartAttackDamage);
-
-                // Update DevGeneManager with new hot-reloaded values
-                if (_devGeneManager != null) _devGeneManager.RefreshSettings(_config);
-
-                // Save to user.json override
-                _ctx.Settings.SaveUser();
-                
-                _log.Info("Configuration updated and saved via ModAPI Settings.");
+                    // Persist to spine_settings.json using Spine infrastructure
+                    var definitions = ModAPI.Spine.SpineSettingsHelper.Scan(_config);
+                    ModAPI.Spine.SettingsSerializer.Save(_ctx.Mod.Id, _config, definitions);
+                    
+                    _log.Info("Configuration updated and saved to spine_settings.json.");
+                }
+                catch (System.Exception ex)
+                {
+                    _log.Error($"Failed to save configuration: {ex.Message}");
+                }
             }
+        }
+        public void SetInitialDevelopmentPotential(FamilyMember member, int potential)
+        {
+            // Ensure we have valid references
+            if (member == null || _devGeneManager == null) return;
+
+            // Get the gene (or generate a default one if missing)
+            var gene = _devGeneManager.GetOrGenerateGene(member);
+            if (gene != null)
+            {
+                gene.PreAdultPotential = potential;
+                // Optional: Reset gains if you want this to be a hard reset
+                // gene.PreAdultGainsAwarded = 0;
+                _log.Info($"Set initial development potential for {member.firstName} to {potential}.");
+            }
+        }
+
+        public ChildStage GetChildStage(FamilyMember member)
+        {
+            if (_childManager == null) return ChildStage.Adult;
+            return _childManager.GetStage(member);
+        }
+
+        public int CalculateTotalPopulation(System.Func<BaseCharacter, bool> filter = null)
+        {
+            // Count family members
+            int count = 0;
+            if (FamilyManager.Instance != null)
+            {
+                var members = FamilyManager.Instance.GetAllFamilyMembers();
+                if (members != null)
+                {
+                    foreach (var m in members)
+                    {
+                        if (m != null && !m.isDead && (filter == null || filter(m)))
+                        {
+                            count++;
+                        }
+                    }
+                }
+            }
+            // FUTURE: Iterate over external/tracked NPCs if AgeTracker exposes them
+            return count;
+        }
+
+        public int GetPopulationInAgeRange(int minAgeYears, int maxAgeYears)
+        {
+            int count = 0;
+             if (FamilyManager.Instance != null)
+            {
+                var members = FamilyManager.Instance.GetAllFamilyMembers();
+                if (members != null)
+                {
+                    foreach (var m in members)
+                    {
+                        if (m != null && !m.isDead)
+                        {
+                            int age = _ageTracker.GetAgeYears(m);
+                            if (age >= minAgeYears && age <= maxAgeYears)
+                            {
+                                count++;
+                            }
+                        }
+                    }
+                }
+            }
+            return count;
+        }
+
+        public List<FamilyMember> GetCharactersByStage(ChildStage stage)
+        {
+            var result = new List<FamilyMember>();
+            if (FamilyManager.Instance != null && _childManager != null)
+            {
+                var members = FamilyManager.Instance.GetAllFamilyMembers();
+                if (members != null)
+                {
+                    foreach (var m in members)
+                    {
+                        if (m != null && !m.isDead && _childManager.GetStage(m) == stage)
+                        {
+                            result.Add(m);
+                        }
+                    }
+                }
+            }
+            return result;
         }
     }
 }

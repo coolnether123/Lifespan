@@ -93,5 +93,42 @@ namespace Lifespan.Tests
             // Assert
             Assert.AreEqual(0.6f, chance, 0.001f);
         }
+
+        [Test]
+        public void Development_VaryingPoints_ImpactsChance()
+        {
+            // "Make sure tests are made... proper to see how development works with varying points given"
+            
+            // Arrange
+            var member = (FamilyMember)FormatterServices.GetUninitializedObject(typeof(FamilyMember));
+            SetTraumaValue(member, 50f); // 0 stress
+            
+            var gene = new DevelopmentGene();
+            int ageYears = 17; // PreAdult
+            int yearsToMilestone = 1; // 1 year left (Urgent catch up!)
+            int weeksAged = 1;
+
+            _config.baseStatGainChance = 5.0f; // 5% base
+            _config.catchUpBonusPerPoint = 0.10f; // Huge bonus per point
+            _config.catchUpWindowYears = 2;
+            _config.childGrowthMultiplier = 1.0f;
+            _manager.RefreshSettings(_config);
+
+            // Act 1: Low Potential (Simulating weak genes or bad luck)
+            int lowPotential = 1;
+            float lowChance = _manager.CalculateStatGainChance(member, gene, LifeStage.PreAdult, ageYears, yearsToMilestone, lowPotential, weeksAged);
+
+            // Act 2: High Potential (Simulating strong genes)
+            int highPotential = 5;
+            float highChance = _manager.CalculateStatGainChance(member, gene, LifeStage.PreAdult, ageYears, yearsToMilestone, highPotential, weeksAged);
+
+            // Assert
+            // Base 0.05 + (0.10 * 1 * 2) = 0.25 (approx)
+            // Base 0.05 + (0.10 * 5 * 2) = 1.05 -> Clamped 1.0
+            
+            Assert.Greater(highChance, lowChance, "Higher potential should result in significantly higher gain chance due to catch-up mechanics.");
+            Assert.AreEqual(1.0f, highChance, 0.01f, "High potential should cap out at 100% in this extreme catch-up scenario.");
+        }
+        
     }
 }

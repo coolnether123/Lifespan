@@ -1,6 +1,7 @@
 using NUnit.Framework;
 using Lifespan;
 using ModAPI.Core;
+using ModAPI.Saves;
 using Moq;
 using System.Collections.Generic;
 using System.Linq;
@@ -24,6 +25,9 @@ namespace Lifespan.Tests
             _mockLog = new Mock<IModLogger>();
             _mockCtx.Setup(c => c.Log).Returns(_mockLog.Object);
             
+            var mockSave = new Mock<ISaveSystem>();
+            _mockCtx.Setup(c => c.SaveSystem).Returns(mockSave.Object);
+
             _config = new LifespanConfig();
             // Default config values (Percentage Scale)
             _config.elderAgeYears = 60;
@@ -31,6 +35,7 @@ namespace Lifespan.Tests
             _config.deathProbabilityIncreasePerYear = 0.008f; // Was 0.00008
             _config.deathProbabilityMultiplier = 1.0f;
 
+            // Important: AgeTracker ctor will now work because ScanSystem is mocked
             _mockTracker = new Mock<AgeTracker>(_mockCtx.Object, _config);
             _manager = new DeathManager(_mockCtx.Object, _config, _mockTracker.Object);
         }

@@ -1,4 +1,5 @@
 using ModAPI.Core;
+using HarmonyLib;
 using System;
 using System.Collections.Generic;
 using UnityEngine;
@@ -29,6 +30,7 @@ namespace Lifespan
 
         private DeathManager _deathManager;
         private DialogueScheduler _scheduler;
+        private IModLogger Log => _log;
 
         public ElderIllnessManager(IPluginContext ctx, LifespanConfig config, AgeTracker ageTracker)
         {
@@ -48,26 +50,26 @@ namespace Lifespan
             _scheduler = scheduler;
         }
 
-        private void TriggerJournal(string text, DialogueScheduler.Priority priority = DialogueScheduler.Priority.Routine)
+        private void TriggerJournal(string text, DialogueScheduler.Priority priority = DialogueScheduler.Priority.Routine, System.Func<bool> validation = null)
         {
-            if (_scheduler != null) _scheduler.Enqueue(null, text, true, priority);
-            else if (JournalManager.Instance != null)
+            if (_scheduler != null) _scheduler.Enqueue(null, text, true, priority, validation);
+            else if (JournalManager.Instance != null && (validation == null || validation()))
             {
-                try { ReflectionHelper.InvokeMethod(JournalManager.Instance, "InsertJournalEntry", text, "", false); } catch { }
+                try { Traverse.Create(JournalManager.Instance).Method("InsertJournalEntry", new object[] { text, "", false }).GetValue(); } catch { }
             }
         }
 
-        private void TriggerSpeech(FamilyMember member, string text, DialogueScheduler.Priority priority = DialogueScheduler.Priority.Routine)
+        private void TriggerSpeech(FamilyMember member, string text, DialogueScheduler.Priority priority = DialogueScheduler.Priority.Routine, System.Func<bool> validation = null)
         {
-            if (_scheduler != null) _scheduler.Enqueue(member, text, false, priority);
-            else try { member.Say(text); } catch { }
+            if (_scheduler != null) _scheduler.Enqueue(member, text, false, priority, validation);
+            else try { if (validation == null || validation()) member.Say(text); } catch { }
         }
 
         public void ProcessElderIllnessRoll(FamilyMember member, int currentAgeWeeks)
         {
             if (member == null || member.isDead) return;
 
-            LifespanLoggerExtensions.Debug(_log, $"[ElderIllness] Processing illness roll for {member.firstName} ({currentAgeWeeks/52}y).");
+            Log.Debug($"Processing illness roll for {member.firstName} ({currentAgeWeeks/52}y).");
 
             // 0. Check for Progression of Mild Illnesses
             CheckProgression(member);
@@ -105,11 +107,11 @@ namespace Lifespan
             float acquiredChance = baseChance * healthMult * stressMult * fatigueMult;
 
             float rollValue = (float)_random.NextDouble();
-            LifespanLoggerExtensions.Debug(_log, $"[ElderIllness] {member.firstName} Roll: {rollValue:F4} VS Chance: {acquiredChance:F4} (H:{healthMult:F1}x S:{stressMult:F1}x F:{fatigueMult:F1}x).");
+            Log.Debug($"{member.firstName} Roll: {rollValue:F4} VS Chance: {acquiredChance:F4} (H:{healthMult:F1}x S:{stressMult:F1}x F:{fatigueMult:F1}x).");
 
             if (rollValue < acquiredChance)
             {
-                LifespanLoggerExtensions.Debug(_log, $"[ElderIllness] Roll SUCCESS for {member.firstName}. Choosing illness...");
+                Log.Debug($"Roll SUCCESS for {member.firstName}. Choosing illness...");
                 AcquireRandomIllness(member);
             }
 
@@ -135,7 +137,7 @@ namespace Lifespan
                 {
                     targetWeek = CalculateNextStageWeek(member, currentWeek);
                     _ageTracker.SetOnsetWeek(member, ill, targetWeek);
-                    LifespanLoggerExtensions.Debug(_log, $"[ElderIllness] Initialized legacy onset for {member.firstName} ({ill}). Target: {targetWeek/52}y.");
+                    Log.Debug($"Initialized legacy onset for {member.firstName} ({ill}). Target: {targetWeek/52}y.");
                 }
 
                 if (currentWeek >= targetWeek)
@@ -147,7 +149,7 @@ namespace Lifespan
             foreach (var mild in toUpgrade)
             {
                 string severe = mild.Replace(".mild.", ".");
-                _log.Info($"[Lifespan] {member.firstName}'s condition has worsened: {GetIllnessName(mild)} -> {GetIllnessName(severe)}");
+                Log.Info($"{member.firstName}'s condition has worsened: {GetIllnessName(mild)} -> {GetIllnessName(severe)}");
                 
                 _ageTracker.RemoveIllness(member, mild);
                 _ageTracker.AddIllness(member, severe);
@@ -159,8 +161,8 @@ namespace Lifespan
                 {
                     // 1. Victim Reaction
                     string victimLine = GetFlavorDialogue(member, severe);
-                    TriggerSpeech(member, victimLine, DialogueScheduler.Priority.Reactive);
-                    TriggerJournal($"Condition Worsened: {member.firstName} now has {GetIllnessName(severe)}.", DialogueScheduler.Priority.Reactive);
+                    TriggerSpeech(member, victimLine, DialogueScheduler.Priority.Reactive, () => _ageTracker.GetIllnesses(member).Contains(severe));
+                    TriggerJournal($"Condition Worsened: {member.firstName} now has {GetIllnessName(severe)}.", DialogueScheduler.Priority.Reactive, () => _ageTracker.GetIllnesses(member).Contains(severe));
 
                     // 2. Observer Reactions (Throttled: 1-6 people)
                     TriggerObserverReactions(member, severe);
@@ -178,7 +180,7 @@ namespace Lifespan
             var observers = new List<FamilyMember>();
             foreach (var m in allMembers)
             {
-                if (m != null && !m.isDead && m != victim && !m.isChild) 
+                if (m != null && !m.isDead && m.GetId() != victim.GetId() && !m.isChild) 
                 {
                     observers.Add(m);
                 }
@@ -226,7 +228,7 @@ namespace Lifespan
             {
                 var observer = observers[i];
                 string line = GetObservationDialogue(observer, victim, illnessId);
-                TriggerSpeech(observer, line, DialogueScheduler.Priority.Reactive);
+                TriggerSpeech(observer, line, DialogueScheduler.Priority.Reactive, () => _ageTracker.GetIllnesses(victim).Contains(illnessId) && !victim.isDead);
             }
         }
 
@@ -283,27 +285,27 @@ namespace Lifespan
             if (possible.Count > 0)
             {
                 string picked = possible[_random.Next(possible.Count)];
-                _log.Info($"[Lifespan] {member.firstName} has developed symptoms of {GetIllnessName(picked)}.");
+                Log.Info($"{member.firstName} has developed symptoms of {GetIllnessName(picked)}.");
                 _ageTracker.AddIllness(member, picked);
                 
                 // Initialize Stage Timing based on current condition
                 int currentWeek = _ageTracker.GetAgeWeeks(member);
                 int targetWeek = CalculateNextStageWeek(member, currentWeek);
                 _ageTracker.SetOnsetWeek(member, picked, targetWeek);
-                LifespanLoggerExtensions.Debug(_log, $"[ElderIllness] {GetIllnessName(picked)} contracted. Stage 2 Target: Week {targetWeek} (in {(targetWeek-currentWeek)/52f:F1}y).");
+                Log.Debug($"{GetIllnessName(picked)} contracted. Stage 2 Target: Week {targetWeek} (in {(targetWeek-currentWeek)/52f:F1}y).");
 
                 ApplyInitialEffect(member, picked);
                 
                 if (JournalManager.Instance != null)
                 {
                     string flavor = GetFlavorDialogue(member, picked);
-                    TriggerSpeech(member, flavor, DialogueScheduler.Priority.Reactive);
-                    TriggerJournal($"{member.firstName} is showing signs of {GetIllnessName(picked)}.", DialogueScheduler.Priority.Reactive);
+                    TriggerSpeech(member, flavor, DialogueScheduler.Priority.Reactive, () => _ageTracker.GetIllnesses(member).Contains(picked));
+                    TriggerJournal($"{member.firstName} is showing signs of {GetIllnessName(picked)}.", DialogueScheduler.Priority.Reactive, () => _ageTracker.GetIllnesses(member).Contains(picked));
                 }
             }
             else
             {
-                LifespanLoggerExtensions.Debug(_log, $"[ElderIllness] {member.firstName} already has all possible illnesses (or mild variants).");
+                Log.Debug($"{member.firstName} already has all possible illnesses (or mild variants).");
             }
         }
 
@@ -313,7 +315,7 @@ namespace Lifespan
             var illnesses = _ageTracker.GetIllnesses(member);
             if (illnesses.Count > 0)
             {
-                LifespanLoggerExtensions.Debug(_log, $"[ElderIllness] Re-applying {illnesses.Count} modifiers for {member.firstName}.");
+                Log.Debug($"Re-applying {illnesses.Count} modifiers for {member.firstName}.");
                 foreach (var id in illnesses)
                 {
                     ApplyInitialEffect(member, id, true);
@@ -323,7 +325,7 @@ namespace Lifespan
 
         private void ApplyInitialEffect(FamilyMember member, string illnessId, bool silent = false)
         {
-            LifespanLoggerExtensions.Debug(_log, $"[ElderIllness] Applying effect: {GetIllnessName(illnessId)} -> {member.firstName}.");
+            Log.Debug($"Applying effect: {GetIllnessName(illnessId)} -> {member.firstName}.");
             switch (illnessId)
             {
                 case ILLNESS_ARTHRITIS:
@@ -366,24 +368,24 @@ namespace Lifespan
 
         private void TriggerHeartAttack(FamilyMember member)
         {
-            _log.Info($"[Lifespan] HEART ATTACK! {member.firstName} is having a coronary event.");
+            Log.Info($"HEART ATTACK! {member.firstName} is having a coronary event.");
             
             bool willKill = member.health <= (int)_config.heartAttackDamage;
 
             if (willKill && _deathManager != null)
             {
-                _log.Info($"[Lifespan] {member.firstName}'s heart has stopped.");
+                Log.Info($"{member.firstName}'s heart has stopped.");
                 _deathManager.ScheduleDeath(member, "Heart Failure");
             }
             else
             {
-                _log.Warn($"{member.firstName} survived a heart attack.");
+                Log.Warn($"{member.firstName} survived a heart attack.");
                 member.Damage((int)_config.heartAttackDamage, BaseCharacter.DamageType.Undefined, "Heart Attack");
             }
             
             if (JournalManager.Instance != null)
             {
-                TriggerJournal($"{member.firstName} suffered a heart attack!", DialogueScheduler.Priority.Reactive);
+                TriggerJournal($"{member.firstName} suffered a heart attack!", DialogueScheduler.Priority.Reactive, () => !member.isDead);
             }
         }
 
@@ -552,7 +554,7 @@ namespace Lifespan
         {
              var options = new List<string>();
              // Only if they are distinct people
-             if (observer == victim) return "...";
+             if (observer == null || victim == null || observer.GetId() == victim.GetId()) return "...";
 
              switch (illnessId)
              {
@@ -673,14 +675,14 @@ namespace Lifespan
 
         public void AddIllnessExternal(FamilyMember member, string id)
         {
-            LifespanLoggerExtensions.Debug(_log, $"[DEBUG] ElderIllnessManager: AddIllnessExternal called for {id} on {member.firstName}.");
+            Log.Debug($"ElderIllnessManager: AddIllnessExternal called for {id} on {member.firstName}.");
             _ageTracker.AddIllness(member, id);
             ApplyInitialEffect(member, id);
         }
 
         public void RemoveIllnessExternal(FamilyMember member, string id)
         {
-            LifespanLoggerExtensions.Debug(_log, $"[DEBUG] ElderIllnessManager: RemoveIllnessExternal called for {id} on {member.firstName}.");
+            Log.Debug($"ElderIllnessManager: RemoveIllnessExternal called for {id} on {member.firstName}.");
             _ageTracker.RemoveIllness(member, id);
         }
         // Key: Dialogue Context (e.g. "Flavor_MildDementia"), Value: List of hash codes of used lines

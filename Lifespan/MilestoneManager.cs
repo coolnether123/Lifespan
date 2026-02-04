@@ -1,5 +1,5 @@
 using ModAPI.Core;
-using ModAPI.Reflection;
+using HarmonyLib;
 using System;
 using System.Collections.Generic;
 
@@ -21,6 +21,7 @@ namespace Lifespan
         private readonly Dictionary<int, HashSet<string>> _triggeredMilestones = new Dictionary<int, HashSet<string>>();
         private readonly Dictionary<int, int> _lastBirthdayYear = new Dictionary<int, int>();
         private readonly Dictionary<int, int> _lastSpeechLine = new Dictionary<int, int>();
+        private IModLogger Log => _log;
 
         public MilestoneManager(IPluginContext ctx, LifespanConfig config, AgeTracker ageTracker)
         {
@@ -35,17 +36,17 @@ namespace Lifespan
             _scheduler = scheduler;
         }
 
-        private void TriggerSpeech(FamilyMember member, string text, DialogueScheduler.Priority priority = DialogueScheduler.Priority.Routine)
+        private void TriggerSpeech(FamilyMember member, string text, DialogueScheduler.Priority priority = DialogueScheduler.Priority.Routine, System.Func<bool> validation = null)
         {
-            if (_scheduler != null) _scheduler.Enqueue(member, text, false, priority);
-            else try { member.Say(text); } catch { }
+            if (_scheduler != null) _scheduler.Enqueue(member, text, false, priority, validation);
+            else try { if (validation == null || validation()) member.Say(text); } catch { }
         }
 
-        private void TriggerJournal(string text, DialogueScheduler.Priority priority = DialogueScheduler.Priority.Routine)
+        private void TriggerJournal(string text, DialogueScheduler.Priority priority = DialogueScheduler.Priority.Routine, System.Func<bool> validation = null)
         {
             if (!_config.enableJournalEntries) return;
-            if (_scheduler != null) _scheduler.Enqueue(null, text, true, priority);
-            else InsertJournalEntry(text);
+            if (_scheduler != null) _scheduler.Enqueue(null, text, true, priority, validation);
+            else if (validation == null || validation()) InsertJournalEntry(text);
         }
 
         public void ProcessMilestones(FamilyMember member, int ageWeeks)
@@ -171,7 +172,7 @@ namespace Lifespan
 
             if (options.Count > 0)
             {
-                TriggerJournal(options[_random.Next(options.Count)], DialogueScheduler.Priority.Reactive);
+                TriggerJournal(options[_random.Next(options.Count)], DialogueScheduler.Priority.Reactive, () => _ageTracker.GetAgeWeeks(member) / 52 == ageYears);
             }
         }
 
@@ -184,7 +185,7 @@ namespace Lifespan
             List<FamilyMember> candidates = new List<FamilyMember>();
             foreach (var m in members)
             {
-                if (m != null && !m.isDead && m != excluded)
+                if (m != null && !m.isDead && m.GetId() != excluded.GetId())
                     candidates.Add(m);
             }
 
@@ -205,7 +206,7 @@ namespace Lifespan
                 "I can't believe how quickly they are growing.",
                 $"{member.firstName} has such curiosity about the world."
             };
-            TriggerSpeech(observer, lines[_random.Next(lines.Length)]);
+            TriggerSpeech(observer, lines[_random.Next(lines.Length)], DialogueScheduler.Priority.Routine, () => _ageTracker.GetAgeWeeks(member) / 52 == ageYears);
         }
 
         private void TriggerAge10Milestone(FamilyMember member)
@@ -219,7 +220,7 @@ namespace Lifespan
                 $"{member.firstName} is developing real skills now.",
                 "It feels like they were just born, and now look at them at 10 years old."
             };
-            TriggerSpeech(observer, lines[_random.Next(lines.Length)]);
+            TriggerSpeech(observer, lines[_random.Next(lines.Length)], DialogueScheduler.Priority.Routine, () => _ageTracker.GetAgeWeeks(member) / 52 == 10);
         }
 
         private void TriggerAge15Milestone(FamilyMember member)
@@ -233,7 +234,7 @@ namespace Lifespan
                 $"{member.firstName} is almost ready for the real world.",
                 "I barely recognize the 15 year old they are becoming."
             };
-            TriggerSpeech(observer, lines[_random.Next(lines.Length)]);
+            TriggerSpeech(observer, lines[_random.Next(lines.Length)], DialogueScheduler.Priority.Routine, () => _ageTracker.GetAgeWeeks(member) / 52 == 15);
         }
 
         private void TriggerFirstSkillMessage(FamilyMember member)
@@ -303,11 +304,11 @@ namespace Lifespan
             if (JournalManager.Instance == null) return;
             try
             {
-                ReflectionHelper.InvokeMethod(JournalManager.Instance, "InsertJournalEntry", text, "", false);
+                Traverse.Create(JournalManager.Instance).Method("InsertJournalEntry", new object[] { text, "", false }).GetValue();
             }
             catch (Exception ex)
             {
-                _log.Error($"Failed to insert journal entry: {ex.Message}");
+                Log.Error($"Failed to insert journal entry: {ex.Message}");
             }
         }
 
@@ -371,7 +372,7 @@ namespace Lifespan
             }
             
             _lastSpeechLine[memberId] = selectedLine.GetHashCode();
-            TriggerSpeech(member, selectedLine);
+            TriggerSpeech(member, selectedLine, DialogueScheduler.Priority.Routine, () => _ageTracker.GetAgeWeeks(member) / 52 == age);
         }
 
         private string GetRandomBunkerItem()

@@ -1,5 +1,5 @@
 using ModAPI.Core;
-using ModAPI.Reflection;
+using HarmonyLib;
 using System;
 using System.Collections.Generic;
 using UnityEngine;
@@ -20,7 +20,8 @@ namespace Lifespan
         private const int MAX_AGE_DEATH_REASON_THRESHOLD_WEEKS = 104;
         private const int SCHEDULE_DEATH_RANDOM_OFFSET_DAYS = 7;
         private const float FATAL_DAMAGE_AMOUNT = 999f;
-
+        private IModLogger Log => _log;
+ 
         public DeathManager(IPluginContext ctx, LifespanConfig config, AgeTracker ageTracker)
         {
             _config = config;
@@ -39,7 +40,7 @@ namespace Lifespan
             if (_scheduler != null) _scheduler.Enqueue(null, text, true, priority);
             else if (JournalManager.Instance != null)
             {
-                try { ReflectionHelper.InvokeMethod(JournalManager.Instance, "InsertJournalEntry", text, "", false); } catch { }
+                try { Traverse.Create(JournalManager.Instance).Method("InsertJournalEntry", new object[] { text, "", false }).GetValue(); } catch { }
             }
         }
 
@@ -51,7 +52,7 @@ namespace Lifespan
 
         public void Reset()
         {
-            if (LifespanLoggerExtensions.VerboseEnabled) LifespanLoggerExtensions.Debug(_log, "Resetting pending deaths for fresh session.");
+            if (Log.IsDebugEnabled) Log.Debug("Resetting pending deaths for fresh session.");
             _scheduledDeaths.Clear();
             _surgeDeaths.Clear();
         }
@@ -99,7 +100,7 @@ namespace Lifespan
                 // If we reached the target day (or passed it due to time skip), trigger the surge
                 if (currentDay >= sd.TargetDay)
                 {
-                    if (LifespanLoggerExtensions.VerboseEnabled) LifespanLoggerExtensions.Debug(_log, $"Schedule reached for {sd.Member.firstName} (Day {currentDay} >= {sd.TargetDay}). Starting Surge.");
+                    if (Log.IsDebugEnabled) Log.Debug($"Schedule reached for {sd.Member.firstName} (Day {currentDay} >= {sd.TargetDay}). Starting Surge.");
                     // Pass the original target day to ensure death date is recorded correctly even if we skipped time
                     StartSurge(sd.Member, sd.Reason, sd.TargetDay);
                     _scheduledDeaths.RemoveAt(i);
@@ -117,7 +118,7 @@ namespace Lifespan
                 var sd = _surgeDeaths[i];
                 if (currentTime >= sd.DieAtTime)
                 {
-                    if (LifespanLoggerExtensions.VerboseEnabled) LifespanLoggerExtensions.Debug(_log, $"Surge finished for {sd.Member.firstName}. Executing fatal damage.");
+                    if (Log.IsDebugEnabled) Log.Debug($"Surge finished for {sd.Member.firstName}. Executing fatal damage.");
                     ExecuteDeath(sd.Member, sd.Reason, sd.TargetDay);
                     _surgeDeaths.RemoveAt(i);
                 }
@@ -128,7 +129,7 @@ namespace Lifespan
         {
             if (member == null || member.isDead || IsDeathPending(member)) return;
 
-            if (LifespanLoggerExtensions.VerboseEnabled) LifespanLoggerExtensions.Debug(_log, $"Processing death roll for {member.firstName} ({ageWeeks/52}y).");
+            if (Log.IsDebugEnabled) Log.Debug($"Processing death roll for {member.firstName} ({ageWeeks/52}y).");
 
             // 1. Probability of death increases with age past elder threshold
             int elderWeeks = _config.elderAgeYears * 52;
@@ -145,11 +146,11 @@ namespace Lifespan
                 float finalProb = baseProb * healthImpact * _config.deathProbabilityMultiplier;
 
                 float roll = (float)_random.NextDouble();
-                if (LifespanLoggerExtensions.VerboseEnabled) LifespanLoggerExtensions.Debug(_log, $"Death Roll for {member.firstName}: {roll:F5} VS Prob: {finalProb:F5} (Base: {baseProb:F4}, HP Impact: {healthImpact:F2}, Mult: {_config.deathProbabilityMultiplier}).");
+                if (Log.IsDebugEnabled) Log.Debug($"Death Roll for {member.firstName}: {roll:F5} VS Prob: {finalProb:F5} (Base: {baseProb:F4}, HP Impact: {healthImpact:F2}, Mult: {_config.deathProbabilityMultiplier}).");
 
                 if (roll < finalProb)
                 {
-                    if (LifespanLoggerExtensions.VerboseEnabled) LifespanLoggerExtensions.Debug(_log, $"Death Roll SUCCESS for {member.firstName}.");
+                    if (Log.IsDebugEnabled) Log.Debug($"Death Roll SUCCESS for {member.firstName}.");
                     
                     // Logic: Use "Old age" if very old (80+), otherwise "Natural causes"
                     string reason = (ageWeeks >= 80 * 52) ? "Old age" : "Natural causes";
@@ -161,7 +162,7 @@ namespace Lifespan
             }
             else
             {
-                if (LifespanLoggerExtensions.VerboseEnabled) LifespanLoggerExtensions.Debug(_log, $"{member.firstName} is below elder age threshold.");
+                if (Log.IsDebugEnabled) Log.Debug($"{member.firstName} is below elder age threshold.");
             }
         }
 
@@ -184,7 +185,7 @@ namespace Lifespan
             if (IsDeathPending(member)) return;
 
             int targetDay = GameTime.Day + dayOffset;
-            if (LifespanLoggerExtensions.VerboseEnabled) LifespanLoggerExtensions.Debug(_log, $"Scheduling death for {member.firstName} on GameDay {targetDay}.");
+            if (Log.IsDebugEnabled) Log.Debug($"Scheduling death for {member.firstName} on GameDay {targetDay}.");
             
             _scheduledDeaths.Add(new ScheduledDeath
             {
@@ -199,7 +200,7 @@ namespace Lifespan
             if (member == null || member.isDead) return;
 
             string phrase = _surgePhrases[_random.Next(_surgePhrases.Length)];
-            if (LifespanLoggerExtensions.VerboseEnabled) LifespanLoggerExtensions.Debug(_log, $"Starting Surge for {member.firstName}. Phrase: \"{phrase}\"");
+            if (Log.IsDebugEnabled) Log.Debug($"Starting Surge for {member.firstName}. Phrase: \"{phrase}\"");
 
             // Trigger the character's speech bubble
             TriggerSpeech(member, phrase, DialogueScheduler.Priority.Reactive);
@@ -242,7 +243,7 @@ namespace Lifespan
             {
                 // Temporarily override Day so the game's internal 'CreateObituaryInfo' uses our backdated day
                 AgingPatches.SetDeathDayOverride(memberId, targetDay);
-                _log.Info($"{member.firstName} has passed away due to {reason} (Ref day: {targetDay}).");
+                Log.Info($"{member.firstName} has passed away due to {reason} (Ref day: {targetDay}).");
 
                 // Handle Wasteland Radio Death if exploring
                 if (member.isAway)
@@ -251,7 +252,7 @@ namespace Lifespan
                     {
                         return; // Death execution deferred to radio callback
                     }
-                    _log.Warn($"Radio death failed for {member.firstName}. Falling back to immediate damage.");
+                    Log.Warn($"Radio death failed for {member.firstName}. Falling back to immediate damage.");
                 }
 
                 // Apply fatal damage - bypass unconscious phase with wasteland: true
@@ -266,11 +267,11 @@ namespace Lifespan
                          {
                              try 
                              { 
-                                 ReflectionHelper.InvokeMethod(p, "RemoveDeadPartyMembers", false); 
+                                 Traverse.Create(p).Method("RemoveDeadPartyMembers", new object[] { false }).GetValue(); 
                              } 
                              catch (Exception ex)
                              {
-                                 _log.Error($"Party cleanup failed: {ex.Message}");
+                                 Log.Error($"Party cleanup failed: {ex.Message}");
                              }
                              break;
                          }
@@ -289,18 +290,18 @@ namespace Lifespan
             // Add journal entry
             if (member.isDead)
             {
-                if (LifespanLoggerExtensions.VerboseEnabled) LifespanLoggerExtensions.Debug(_log, "Inserting death journal entry.");
+                if (Log.IsDebugEnabled) Log.Debug("Inserting death journal entry.");
                 TriggerJournal($"{member.firstName} has passed away of old age. They will be missed.", DialogueScheduler.Priority.Reactive);
             }
         }
 
         private bool TryWastelandDeath(FamilyMember member, string reason, int targetDay)
         {
-            if (LifespanLoggerExtensions.VerboseEnabled) LifespanLoggerExtensions.Debug(_log, $"Attempting Radio sequence for {member.firstName}.");
-
+            if (Log.IsDebugEnabled) Log.Debug($"Attempting Radio sequence for {member.firstName}.");
+ 
             if (ExplorationManager.Instance == null)
             {
-                _log.Warn("ExplorationManager.Instance is null! Cannot trigger radio.");
+                Log.Warn("ExplorationManager.Instance is null! Cannot trigger radio.");
                 return false;
             }
 
@@ -368,7 +369,7 @@ namespace Lifespan
             // 5. Define Callback
             radioParams.callback = (response) =>
             {
-                _log.Info($"[Lifespan] Radio confirmed: {member.firstName} has shared their last words from the wasteland.");
+                Log.Info($"Radio confirmed: {member.firstName} has shared their last words from the wasteland.");
                 
                 if (targetDay > 0) 
                 {
@@ -388,11 +389,11 @@ namespace Lifespan
                     try
                     {
                          // Use reflection to call the private cleanup method
-                         ReflectionHelper.InvokeMethod(party, "RemoveDeadPartyMembers", false);
+                         Traverse.Create(party).Method("RemoveDeadPartyMembers", new object[] { false }).GetValue();
                     }
                     catch (Exception ex)
                     {
-                         _log.Error($"[DeathManager] Radio cleanup failed for {member.firstName}: {ex.Message}");
+                         Log.Error($"Radio cleanup failed for {member.firstName}: {ex.Message}");
                     }
                 }
                 
