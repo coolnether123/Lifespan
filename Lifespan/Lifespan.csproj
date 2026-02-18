@@ -16,7 +16,7 @@
     <DebugSymbols>true</DebugSymbols>
     <DebugType>full</DebugType>
     <Optimize>false</Optimize>
-    <OutputPath>..\Lifespan Mod\Lifespan\Assemblies\</OutputPath>
+    <OutputPath>D:\Projects\Sheltered Modding\Lifespan\Decompiled\Lifespan Mod\Lifespan\Assemblies\</OutputPath>
     <DefineConstants>DEBUG;TRACE</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
@@ -41,7 +41,7 @@
       <Private>False</Private>
     </Reference>
     <Reference Include="ModAPI">
-      <HintPath>D:\SteamLibrary\steamapps\common\Sheltered\SMM\ModAPI.dll</HintPath>
+      <HintPath>..\..\..\..\Epic Games\Sheltered\SMM\ModAPI.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="UnityEngine">

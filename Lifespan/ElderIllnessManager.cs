@@ -11,7 +11,7 @@ namespace Lifespan
         private readonly LifespanConfig _config;
         private readonly IModLogger _log;
         private readonly AgeTracker _ageTracker;
-        private readonly System.Random _random;
+        private readonly ModRandomStream _random;
 
         public const string ILLNESS_DEMENTIA = "lifespan.illness.dementia";
         public const string ILLNESS_MILD_DEMENTIA = "lifespan.illness.mild.dementia";
@@ -32,12 +32,12 @@ namespace Lifespan
         private DialogueScheduler _scheduler;
         private IModLogger Log => _log;
 
-        public ElderIllnessManager(IPluginContext ctx, LifespanConfig config, AgeTracker ageTracker)
+        public ElderIllnessManager(IPluginContext ctx, LifespanConfig config, AgeTracker ageTracker, ModRandomStream random)
         {
             _config = config;
             _log = ctx.Log;
             _ageTracker = ageTracker;
-            _random = new System.Random();
+            _random = random;
         }
 
         public void SetDeathManager(DeathManager deathManager)
@@ -106,7 +106,7 @@ namespace Lifespan
 
             float acquiredChance = baseChance * healthMult * stressMult * fatigueMult;
 
-            float rollValue = (float)_random.NextDouble();
+            float rollValue = _random.Value();
             Log.Debug($"{member.firstName} Roll: {rollValue:F4} VS Chance: {acquiredChance:F4} (H:{healthMult:F1}x S:{stressMult:F1}x F:{fatigueMult:F1}x).");
 
             if (rollValue < acquiredChance)
@@ -201,14 +201,14 @@ namespace Lifespan
             
             int countToPick = 2;
 
-            if (_random.NextDouble() < 0.75f) countToPick++;
+            if (_random.Value() < 0.75f) countToPick++;
 
             float healthFactor = (float)victim.health / victim.maxHealth;
-            if (healthFactor < 0.5f && _random.NextDouble() < 0.6f) countToPick++;
+            if (healthFactor < 0.5f && _random.Value() < 0.6f) countToPick++;
 
-            if (victim.stats != null && victim.stats.trauma.Value > 50f && _random.NextDouble() < 0.6f) countToPick++;
+            if (victim.stats != null && victim.stats.trauma.Value > 50f && _random.Value() < 0.6f) countToPick++;
             
-            if (_random.NextDouble() < 0.20f) countToPick++;
+            if (_random.Value() < 0.20f) countToPick++;
 
             // Clamp
             countToPick = Math.Min(countToPick, observers.Count);
@@ -219,7 +219,7 @@ namespace Lifespan
             for (int i = 0; i < observers.Count; i++)
             {
                 var temp = observers[i];
-                int randomIndex = _random.Next(i, observers.Count);
+                int randomIndex = _random.Range(i, observers.Count);
                 observers[i] = observers[randomIndex];
                 observers[randomIndex] = temp;
             }
@@ -239,7 +239,7 @@ namespace Lifespan
              int maxWeeks = _config.illnessStageMaxYears * 52;
              
              // Weighted random towards the middle
-             int duration = _random.Next(minWeeks, maxWeeks);
+             int duration = _random.Range(minWeeks, maxWeeks);
 
              // 2. Modifiers: Bad condition shortens the fuse
              float healthFactor = (float)member.health / member.maxHealth; // 1.0 = good
@@ -284,7 +284,7 @@ namespace Lifespan
             
             if (possible.Count > 0)
             {
-                string picked = possible[_random.Next(possible.Count)];
+                string picked = possible[_random.Range(0, possible.Count)];
                 Log.Info($"{member.firstName} has developed symptoms of {GetIllnessName(picked)}.");
                 _ageTracker.AddIllness(member, picked);
                 
@@ -349,7 +349,7 @@ namespace Lifespan
             {
                 if (id == ILLNESS_HEART)
                 {
-                    float roll = (float)_random.NextDouble();
+                    float roll = _random.Value();
                     if (roll < _config.heartDiseaseAttackChance / 100f) // Divided by 100f
                     {
                         TriggerHeartAttack(member);
@@ -358,7 +358,7 @@ namespace Lifespan
                 // Mild Heart = Palpitations? (Less severe, maybe just panic)
                 else if (id == ILLNESS_MILD_HEART)
                 {
-                    if (_random.NextDouble() < 0.05f) // Rare minor event
+                    if (_random.Value() < 0.05f) // Rare minor event
                     {
                         TriggerJournal($"{member.firstName} felt a confusing flutter in their chest.");
                     }
@@ -718,7 +718,7 @@ namespace Lifespan
             // Fallback (shouldn't happen due to reset check, but safety)
             if (available.Count == 0) available = options;
 
-            string picked = available[_random.Next(available.Count)];
+            string picked = available[_random.Range(0, available.Count)];
             used.Add(picked.GetHashCode());
 
             return picked;

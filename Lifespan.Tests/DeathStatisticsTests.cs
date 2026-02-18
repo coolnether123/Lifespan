@@ -29,10 +29,10 @@ namespace Lifespan.Tests
             _mockCtx.Setup(c => c.SaveSystem).Returns(mockSave.Object);
 
             _config = new LifespanConfig();
-            // Default config values (Percentage Scale)
+            // Config values on 0-100 percentage scale (divided by 100 in code to get decimal probability)
             _config.elderAgeYears = 60;
-            _config.deathBaseProbability = 0.05f; // Was 0.0005
-            _config.deathProbabilityIncreasePerYear = 0.008f; // Was 0.00008
+            _config.deathBaseProbability = 0.05f; // 0.05% per week = 0.0005 decimal probability
+            _config.deathProbabilityIncreasePerYear = 0.008f; // 0.008% per year = 0.00008 decimal
             _config.deathProbabilityMultiplier = 1.0f;
 
             // Important: AgeTracker ctor will now work because ScanSystem is mocked

@@ -9,13 +9,16 @@ namespace Lifespan
     {
         private readonly IPluginContext _ctx;
         private readonly ChildDevelopmentManager _devManager;
+        private readonly DialogueScheduler _dialogue;
         private float _timer;
         private const float CHECK_INTERVAL = 2.0f; // Seconds
+        private readonly Dictionary<int, float> _lastDialogueTime = new Dictionary<int, float>();
 
-        public NurseJobGiver(IPluginContext ctx, ChildDevelopmentManager devManager)
+        public NurseJobGiver(IPluginContext ctx, ChildDevelopmentManager devManager, DialogueScheduler dialogue)
         {
             _ctx = ctx;
             _devManager = devManager;
+            _dialogue = dialogue;
         }
 
         public void Update()
@@ -37,7 +40,7 @@ namespace Lifespan
 
             foreach (var child in members)
             {
-                if (child == null || child.isDead || child.isAway) continue;
+                if (child == null || child.isDead || ExpeditionStateHelper.IsDepartingOrAway(child)) continue;
 
                 if (_devManager.NeedsFeeding(child))
                 {
@@ -45,6 +48,9 @@ namespace Lifespan
                     float hunger = child.stats.hunger.Value;
                     if (hunger >= 40f) // Threshold to start caring
                     {
+                        // Handle Dialogue / "Baby Talk"
+                        ProcessBabyDialogue(child, hunger);
+
                         // Check if already being fed
                         if (IsBeingFed(child)) continue;
 
@@ -61,40 +67,42 @@ namespace Lifespan
             }
         }
 
+        private void ProcessBabyDialogue(FamilyMember child, float hunger)
+        {
+            if (_dialogue == null) return;
+
+            int id = child.GetId();
+            float now = Time.time;
+
+            // Only talk every 30-60 seconds to avoid spam
+            if (!_lastDialogueTime.ContainsKey(id) || now - _lastDialogueTime[id] > 45f)
+            {
+                string text = "";
+                if (hunger > 80f) text = "WAAAAAA! *sob*";
+                else if (hunger > 60f) text = "Waaaa... hungwy...";
+                else text = "Goo goo... *rumble*";
+
+                _dialogue.Enqueue(child, text, false, DialogueScheduler.Priority.Reactive);
+                _lastDialogueTime[id] = now;
+            }
+        }
+
         private bool IsBeingFed(FamilyMember child)
         {
-            // Check all members to see if anyone has a job targeting this child
-            // This is expensive? Max 4-10 members. It's fine.
             var members = FamilyManager.Instance.GetAllFamilyMembers();
             foreach (var m in members)
             {
-                if (m.job_queue != null)
+                if (m.job_queue == null) continue;
+
+                foreach(var job in GetJobs(m))
                 {
-                    // Peek current and queue
-                    // Our Job_FeedChild doesn't strictly expose 'target', but we can check job type
-                    // Actually, passing the child as 'target_character' to base Job might allow checking 'target_character'
-                    // In Job_FeedChild.cs we did: base("...", child.pos, feeder, null) 
-                    // So 'target_character' in base Job is NULL? No, 3rd arg is target?
-                    // Job constructor: Job(type, pos, character, object)
-                    // We passed 'feeder' as 'character'.
-                    // We didn't pass 'child' to base! 
-                    // Let's rely on internal check or checking if 'nurse' is busy.
-                    
-                    // Actually, if we just check if the NURSE has a FeedChild job, we assume they are feeding *someone*.
-                    // If we want to support multiple babies, we need to know WHO they are feeding.
-                    // But for now, if a nurse is feeding *anyone*, maybe that's enough to say "systems working".
-                    // Better: Job_FeedChild could expose the child. But we can't cast to it easily from here without referencing the class type (which we have).
-                    
-                    foreach(var job in GetJobs(m))
+                    if (job is Job_FeedChild feedJob)
                     {
-                        if (job is Job_FeedChild feedJob)
+                        // Use Traverse to peek at the private _child field to see if it matches
+                        FamilyMember target = HarmonyLib.Traverse.Create(feedJob).Field("_child").GetValue<FamilyMember>();
+                        if (target == child)
                         {
-                            // Reflection or public property?
-                            // We can add a public property to Job_FeedChild.
-                            // Or just assume if *anyone* is running Job_FeedChild, they might be feeding this kid?
-                            // No, that's bad.
-                            // Let's just assign. The `AddJob` logic in `JobQueue` prevents duplicates? No.
-                            // But `JobQueue` usually handles one job at a time.
+                            return true;
                         }
                     }
                 }
@@ -104,15 +112,23 @@ namespace Lifespan
 
         private IEnumerable<Job> GetJobs(FamilyMember m)
         {
-            // Helper to iterate queue
             if (m.job_queue == null) yield break;
             
-            // Current job
+            // Check current active job
             Job current = m.job_queue.GetCurrent();
             if (current != null) yield return current;
 
-            // Enumerate is hard because job_queue.jobs is private List.
-            // But we can check current.
+            // Check queued jobs
+            // m.job_queue.jobs is private, so we use reflection to iterate the rest of the queue
+            List<Job> queueParams = HarmonyLib.Traverse.Create(m.job_queue).Field("jobs").GetValue<List<Job>>();
+            if (queueParams != null)
+            {
+                // Skip the first one if it's the same as 'current', otherwise just yield all
+                foreach(var j in queueParams)
+                {
+                   if (j != current) yield return j;
+                }
+            }
         }
 
         private FamilyMember FindNurse()
@@ -121,15 +137,26 @@ namespace Lifespan
             var members = FamilyManager.Instance.GetAllFamilyMembers();
             foreach (var m in members)
             {
-                if (m == null || m.isDead || m.isAway || m.IsUnconscious || m.isCatatonic) continue;
+                if (!IsValidNursingCandidate(m)) continue;
                 if (_devManager.GetStage(m) < ChildStage.Teen) continue; // Only teens/adults can feed
 
+                // ONLY if automation is enabled!
+                if (!m.automation) continue;
+
                 if (m.job_queue.is_empty) return m;
-                
-                // Also define "Idle" as doing "Job_Wander" or "Job_Sleep" (if we want to wake them UP to feed baby? Maybe not).
-                // Prioritize completely idle.
             }
             return null;
+        }
+
+        private bool IsValidNursingCandidate(FamilyMember member)
+        {
+            if (member == null || member.isDead) return false;
+            if (member.IsUnconscious || member.isCatatonic) return false;
+
+            // Hands-off expedition members during departure/away windows.
+            if (ExpeditionStateHelper.IsDepartingOrAway(member)) return false;
+
+            return true;
         }
     }
 }

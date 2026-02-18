@@ -24,6 +24,10 @@ namespace Lifespan.Tests
             Assert.AreEqual(18, _config.adultAgeYears);
             Assert.AreEqual(60, _config.elderAgeYears);
 
+            // Child Development (Updated defaults for realism)
+            Assert.AreEqual(1, _config.mobileAgeYears);
+            Assert.AreEqual(6, _config.childJobAgeYears);
+
             // Aging Speed
             Assert.AreEqual(1, _config.agingIntervalWeeks);
             Assert.AreEqual(52, _config.weeksAgedPerInterval); // 1 year per tick

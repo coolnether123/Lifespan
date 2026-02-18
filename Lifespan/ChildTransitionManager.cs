@@ -14,13 +14,15 @@ namespace Lifespan
         private readonly LifespanConfig _config;
         private readonly IModLogger _log;
         private readonly AgeTracker _ageTracker;
+        private readonly ModRandomStream _random;
         private IModLogger Log => _log;
 
-        public ChildTransitionManager(IPluginContext ctx, LifespanConfig config, AgeTracker ageTracker)
+        public ChildTransitionManager(IPluginContext ctx, LifespanConfig config, AgeTracker ageTracker, ModRandomStream random)
         {
             _config = config;
             _log = ctx.Log;
             _ageTracker = ageTracker;
+            _random = random;
         }
 
         public void TransitionToAdult(FamilyMember member)
@@ -106,7 +108,7 @@ namespace Lifespan
                         // Grant random strengths from available pool
                         for (int i = 0; i < strengthsToGrant && available.Count > 0; i++)
                         {
-                            int randomIndex = UnityEngine.Random.Range(0, available.Count);
+                            int randomIndex = _random.Range(0, available.Count);
                             Traits.Strength randomStrength = available[randomIndex];
                             member.traits.AddStrength(randomStrength);
                             available.RemoveAt(randomIndex);

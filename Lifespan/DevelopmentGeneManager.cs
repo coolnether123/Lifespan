@@ -16,7 +16,7 @@ namespace Lifespan
         private LifespanConfig _config;
         private readonly IModLogger _log;
         private readonly AgeTracker _ageTracker;
-        private readonly System.Random _random;
+        private readonly ModRandomStream _random;
         private MilestoneManager _milestoneManager;
         private DialogueScheduler _scheduler;
 
@@ -30,20 +30,50 @@ namespace Lifespan
         /// <summary>Speech bubble messages triggered when a 'Spark' (critical success) occurs.</summary>
         private readonly Dictionary<BaseStats.StatType, string[]> _sparkMessages = new Dictionary<BaseStats.StatType, string[]>
         {
-            { BaseStats.StatType.Strength, new[] { "I feel so much stronger today!", "All that hard work is paying off!" } },
-            { BaseStats.StatType.Dexterity, new[] { "My reflexes feel sharper than ever!", "I'm getting faster every day!" } },
-            { BaseStats.StatType.Intelligence, new[] { "Something just clicked in my head!", "I understand things so much better now!" } },
-            { BaseStats.StatType.Charisma, new[] { "I feel like I can talk to anyone!", "People seem to listen to me more!" } },
-            { BaseStats.StatType.Perception, new[] { "I notice things I never saw before!", "The world looks clearer somehow!" } }
+            { BaseStats.StatType.Strength, new[] { 
+                "I feel so much stronger today!", 
+                "All that hard work is paying off!",
+                "I can feel the power in my muscles!",
+                "My body feels like it can do anything!",
+                "I'm getting stronger every day!"
+            } },
+            { BaseStats.StatType.Dexterity, new[] { 
+                "My reflexes feel sharper than ever!", 
+                "I'm getting faster every day!",
+                "My hands have never been this steady!",
+                "I feel like I'm moving in slow motion!",
+                "I can feel the precision in every move!"
+            } },
+            { BaseStats.StatType.Intelligence, new[] { 
+                "Something just clicked in my head!", 
+                "I understand things so much better now!",
+                "The pieces are all falling into place!",
+                "I feel smarter than I've ever been!",
+                "Everything makes sense now!"
+            } },
+            { BaseStats.StatType.Charisma, new[] { 
+                "I feel like I can talk to anyone!", 
+                "People seem to listen to me more!",
+                "I've never felt this confident before!",
+                "Words just flow naturally now!",
+                "I can read people like a book!"
+            } },
+            { BaseStats.StatType.Perception, new[] { 
+                "I notice things I never saw before!", 
+                "The world looks clearer somehow!",
+                "My senses feel razor sharp!",
+                "Nothing escapes my attention anymore!",
+                "I can see details I always missed!"
+            } }
         };
         private IModLogger Log => _log;
 
-        public DevelopmentGeneManager(IPluginContext ctx, LifespanConfig config, AgeTracker ageTracker)
+        public DevelopmentGeneManager(IPluginContext ctx, LifespanConfig config, AgeTracker ageTracker, ModRandomStream random)
         {
             _config = config;
             _log = ctx.Log;
             _ageTracker = ageTracker;
-            _random = new System.Random();
+            _random = random;
         }
 
         /// <summary>
@@ -106,7 +136,7 @@ namespace Lifespan
                 float baseForfeitP = _config.forfeitBaseChance * remainingPotential;
                 float scaledForfeitChance = 1f - Mathf.Pow(1f - baseForfeitP, weeksAgedThisInterval);
 
-                if ((float)_random.NextDouble() < scaledForfeitChance)
+                if (_random.Value() < scaledForfeitChance)
                 {
                     Log.Info($"{member.firstName} failed to reach their full potential for the {stage} stage.");
                     gene.ForfeitPotential(stage);
@@ -117,7 +147,7 @@ namespace Lifespan
             // 2. STAT GAIN ROLL: Standard probability check for skill improvement.
             float finalChance = CalculateStatGainChance(member, gene, stage, currentAgeYears, yearsToMilestone, remainingPotential, weeksAgedThisInterval);
             
-            if ((float)_random.NextDouble() < finalChance)
+            if (_random.Value() < finalChance)
             {
                 // Character successfully improved a skill.
                 AwardStatGain(member, gene, stage);
@@ -177,7 +207,7 @@ namespace Lifespan
             float traumaNormalized = (member.stats?.trauma != null) ? member.stats.trauma.NormalizedValue : 0.5f;
             float sparkChance = _config.sparkBaseChance + (_config.maxStressInfluence * (1f - (2f * traumaNormalized)));
             
-            if ((float)_random.NextDouble() < Mathf.Clamp01(sparkChance))
+            if (_random.Value() < Mathf.Clamp01(sparkChance))
             {
                 gainAmount *= _config.sparkMultiplier;
                 sparkTriggered = true;
@@ -272,7 +302,7 @@ namespace Lifespan
             float totalWeight = strW + dexW + intW + chaW + perW;
             if (totalWeight <= 0f) return BaseStats.StatType.Strength;
 
-            float roll = (float)_random.NextDouble() * totalWeight;
+            float roll = _random.Value() * totalWeight;
             float cumulative = 0f;
             BaseStats.StatType selected;
             
@@ -298,7 +328,7 @@ namespace Lifespan
         {
             if (_sparkMessages.TryGetValue(statType, out string[] messages))
             {
-                string message = messages[_random.Next(messages.Length)];
+                string message = messages[_random.Range(0, messages.Length)];
                 if (_scheduler != null) _scheduler.Enqueue(member, message, false, DialogueScheduler.Priority.Reactive);
                 else try { member.Say(message); } catch { }
             }

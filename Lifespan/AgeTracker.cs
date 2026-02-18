@@ -19,18 +19,18 @@ namespace Lifespan
         private readonly LifespanConfig _config;
         private readonly IModLogger _log;
         private readonly IPluginContext _ctx;
-        private readonly System.Random _random;
+        private readonly ModRandomStream _random;
         private AgeData _currentAgeData;
         private AgeDataSerializable _saveContainer; // v1.2 persistent container
         private IModLogger Log => _log;
 
-        public AgeTracker(IPluginContext ctx, LifespanConfig config)
+        public AgeTracker(IPluginContext ctx, LifespanConfig config, ModRandomStream random)
         {
             _ctx = ctx;
             _config = config;
             _log = ctx.Log;
             _currentAgeData = new AgeData();
-            _random = new System.Random();
+            _random = random;
             
             // Register for automatic v1.2 isolated save data
             _saveContainer = new AgeDataSerializable();
@@ -48,10 +48,14 @@ namespace Lifespan
 
         private int NormalDistribution(int mean, int stdDev)
         {
-            // Box-Muller transform
-            double u1 = 1.0 - _random.NextDouble(); // uniform(0,1] random doubles
-            double u2 = 1.0 - _random.NextDouble();
-            double randStdNormal = Math.Sqrt(-2.0 * Math.Log(u1)) * Math.Sin(2.0 * Math.PI * u2); // random normal(0,1)
+            // Use static ModRandom.Gaussian for simplicity or implement on stream
+            // Since ModRandomStream doesn't have Gaussian yet, we use the static one
+            // but tie it to the seed or just use the math here with stream values.
+            
+            // Box-Muller transform using stream
+            double u1 = 1.0 - _random.Value(); 
+            double u2 = 1.0 - _random.Value();
+            double randStdNormal = Math.Sqrt(-2.0 * Math.Log(u1)) * Math.Sin(2.0 * Math.PI * u2); 
             return (int)(mean + stdDev * randStdNormal);
         }
 
@@ -59,8 +63,11 @@ namespace Lifespan
         {
             if (isChild)
             {
-                // Most children 5-14, some younger/older
-                return Mathf.Clamp(NormalDistribution(_config.initialChildAgeYears, 4), 0, 17) * 52;
+                // Starting kids (Day 1) are 10-17. 
+                // Subsequent recruits/NPCs use config value.
+                int mean = (GameTime.Day <= 1) ? 13 : _config.initialChildAgeYears;
+                int min = (GameTime.Day <= 1) ? 10 : 0;
+                return Mathf.Clamp(NormalDistribution(mean, 2), min, 17) * 52;
             }
             else
             {
@@ -80,7 +87,14 @@ namespace Lifespan
             
             // Check if we already know this character's age (for NPCs that might be saved across sessions)
             int id = character.GetId();
-            if (_currentAgeData.externalCharacterAges.ContainsKey(id))
+            bool isFamilyMember = character is FamilyMember;
+
+            if (isFamilyMember && _currentAgeData.familyMemberAges.ContainsKey(id))
+            {
+                return _currentAgeData.familyMemberAges[id];
+            }
+
+            if (!isFamilyMember && _currentAgeData.externalCharacterAges.ContainsKey(id))
             {
                 return _currentAgeData.externalCharacterAges[id];
             }
@@ -106,8 +120,19 @@ namespace Lifespan
                     break;
             }
 
-            // Store it so we don't regenerate
-            _currentAgeData.externalCharacterAges[id] = ageWeeks;
+            // Store in the correct map so FamilyMembers never fall back to random family initialization.
+            if (isFamilyMember)
+            {
+                _currentAgeData.familyMemberAges[id] = ageWeeks;
+                if (_currentAgeData.externalCharacterAges.ContainsKey(id))
+                {
+                    _currentAgeData.externalCharacterAges.Remove(id);
+                }
+            }
+            else
+            {
+                _currentAgeData.externalCharacterAges[id] = ageWeeks;
+            }
             
             // Publish event for other mods
             ModEventBus.Publish("Lifespan.CharacterAgeGenerated", 

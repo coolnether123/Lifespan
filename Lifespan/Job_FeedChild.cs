@@ -44,6 +44,20 @@ namespace Lifespan
                 Cancel(true);
                 return false;
             }
+
+            // Fix for KeyNotFoundException:
+            // Custom jobs that delegate UpdateInteraction to an Obj_Base MUST 
+            // call BeginInteraction first to register the character with the object's 
+            // interaction dictionary (Obj_Base.current_interaction).
+            if (this.obj != null && !string.IsNullOrEmpty(this.type))
+            {
+                if (!this.obj.BeginInteraction(this.character, this.type))
+                {
+                    Cancel(true);
+                    return false;
+                }
+            }
+
             this.state = JobState.Started;
             return true;
         }

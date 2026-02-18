@@ -1,5 +1,6 @@
 using System;
 using UnityEngine;
+using ModAPI.Core;
 
 namespace Lifespan
 {
@@ -46,11 +47,11 @@ namespace Lifespan
         /// <summary>
         /// Generates a randomized gene based on statistical guidelines.
         /// </summary>
-        public static GreyingGene GenerateRandom(System.Random rng)
+        public static GreyingGene GenerateRandom(ModRandomStream rng)
         {
             // 1. Determine if they grey at all (1 in 10 do not grey significantly by 60)
             // We'll treat this as 'StartAge > 70' or MaxCoverage very low.
-            bool willGrey = rng.NextDouble() > 0.10; 
+            bool willGrey = rng.Value() > 0.10f; 
             if (!willGrey)
             {
                 return new GreyingGene(99, 10, 0f);
@@ -60,33 +61,33 @@ namespace Lifespan
             // Most start in mid-30s to late 40s.
             // Early onset: 20s. Late onset: 50s+.
             // Using a weighted approach.
-            int startAge = 35 + rng.Next(-10, 20); // 25 to 55 range roughly
+            int startAge = 35 + rng.Range(-10, 20); // 25 to 55 range roughly
 
             // 3. Determine Duration
             // Average: 10 years.
             // Fast: < 10.
             // Slow: 20-40+.
-            int durationType = rng.Next(100);
+            int durationType = rng.Range(0, 100);
             int duration;
             if (durationType < 20) // 20% Fast
             {
-                duration = rng.Next(3, 10);
+                duration = rng.Range(3, 10);
             }
             else if (durationType < 60) // 40% Average
             {
-                duration = rng.Next(10, 16);
+                duration = rng.Range(10, 16);
             }
             else // 40% Slow
             {
-                duration = rng.Next(20, 45);
+                duration = rng.Range(20, 45);
             }
 
             // 4. Determine Max Coverage (Intensity)
             // Most go full white (1.0), some stay salt-and-pepper (0.5 - 0.9)
             float maxCoverage = 1.0f;
-            if (rng.NextDouble() < 0.30) // 30% chance of incomplete transition
+            if (rng.Value() < 0.30f) // 30% chance of incomplete transition
             {
-                maxCoverage = (float)(0.4 + (rng.NextDouble() * 0.5)); // 0.4 to 0.9
+                maxCoverage = 0.4f + (rng.Value() * 0.5f); // 0.4 to 0.9
             }
 
             return new GreyingGene(startAge, duration, maxCoverage);

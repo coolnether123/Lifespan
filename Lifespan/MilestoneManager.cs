@@ -14,7 +14,7 @@ namespace Lifespan
         private readonly LifespanConfig _config;
         private readonly IModLogger _log;
         private readonly AgeTracker _ageTracker;
-        private readonly System.Random _random;
+        private readonly ModRandomStream _random;
         private DialogueScheduler _scheduler;
 
         // Tracks triggered milestones to avoid spamming the same event multiple times per age interval
@@ -23,12 +23,12 @@ namespace Lifespan
         private readonly Dictionary<int, int> _lastSpeechLine = new Dictionary<int, int>();
         private IModLogger Log => _log;
 
-        public MilestoneManager(IPluginContext ctx, LifespanConfig config, AgeTracker ageTracker)
+        public MilestoneManager(IPluginContext ctx, LifespanConfig config, AgeTracker ageTracker, ModRandomStream random)
         {
             _config = config;
             _log = ctx.Log;
             _ageTracker = ageTracker;
-            _random = new System.Random();
+            _random = random;
         }
 
         public void SetScheduler(DialogueScheduler scheduler)
@@ -77,7 +77,7 @@ namespace Lifespan
                 {
                     // Routine birthdays (speech bubbles)
                     // 30% chance to say something to avoid spamming every single year
-                    if (_random.NextDouble() < 0.3f)
+                    if (_random.Value() < 0.3f)
                     {
                          TriggerRoutineBirthdaySpeech(member, ageYears);
                     }
@@ -95,7 +95,7 @@ namespace Lifespan
             // 3. Elder Philosophy (Speech Bubbles - Random Chance)
             if (ageYears >= _config.elderAgeYears)
             {
-                if (_random.NextDouble() < 0.06f)
+                if (_random.Value() < 0.06f)
                 {
                     TriggerElderPhilosophy(member);
                 }
@@ -105,6 +105,11 @@ namespace Lifespan
         private void TryTriggerUnique(FamilyMember member, string key, Action<FamilyMember> action)
         {
             int memberId = member.GetId();
+            
+            // Ensure the dictionary entry exists
+            if (!_triggeredMilestones.ContainsKey(memberId))
+                _triggeredMilestones[memberId] = new HashSet<string>();
+            
             if (!_triggeredMilestones[memberId].Contains(key))
             {
                 action(member);
@@ -172,7 +177,7 @@ namespace Lifespan
 
             if (options.Count > 0)
             {
-                TriggerJournal(options[_random.Next(options.Count)], DialogueScheduler.Priority.Reactive, () => _ageTracker.GetAgeWeeks(member) / 52 == ageYears);
+                TriggerJournal(options[_random.Range(0, options.Count)], DialogueScheduler.Priority.Reactive, () => _ageTracker.GetAgeWeeks(member) / 52 == ageYears);
             }
         }
 
@@ -190,7 +195,7 @@ namespace Lifespan
             }
 
             if (candidates.Count == 0) return null;
-            return candidates[_random.Next(candidates.Count)];
+            return candidates[_random.Range(0, candidates.Count)];
         }
 
         private void TriggerAge5Milestone(FamilyMember member)
@@ -206,7 +211,7 @@ namespace Lifespan
                 "I can't believe how quickly they are growing.",
                 $"{member.firstName} has such curiosity about the world."
             };
-            TriggerSpeech(observer, lines[_random.Next(lines.Length)], DialogueScheduler.Priority.Routine, () => _ageTracker.GetAgeWeeks(member) / 52 == ageYears);
+            TriggerSpeech(observer, lines[_random.Range(0, lines.Length)], DialogueScheduler.Priority.Routine, () => _ageTracker.GetAgeWeeks(member) / 52 == ageYears);
         }
 
         private void TriggerAge10Milestone(FamilyMember member)
@@ -220,7 +225,7 @@ namespace Lifespan
                 $"{member.firstName} is developing real skills now.",
                 "It feels like they were just born, and now look at them at 10 years old."
             };
-            TriggerSpeech(observer, lines[_random.Next(lines.Length)], DialogueScheduler.Priority.Routine, () => _ageTracker.GetAgeWeeks(member) / 52 == 10);
+            TriggerSpeech(observer, lines[_random.Range(0, lines.Length)], DialogueScheduler.Priority.Routine, () => _ageTracker.GetAgeWeeks(member) / 52 == 10);
         }
 
         private void TriggerAge15Milestone(FamilyMember member)
@@ -234,7 +239,7 @@ namespace Lifespan
                 $"{member.firstName} is almost ready for the real world.",
                 "I barely recognize the 15 year old they are becoming."
             };
-            TriggerSpeech(observer, lines[_random.Next(lines.Length)], DialogueScheduler.Priority.Routine, () => _ageTracker.GetAgeWeeks(member) / 52 == 15);
+            TriggerSpeech(observer, lines[_random.Range(0, lines.Length)], DialogueScheduler.Priority.Routine, () => _ageTracker.GetAgeWeeks(member) / 52 == 15);
         }
 
         private void TriggerFirstSkillMessage(FamilyMember member)
@@ -248,12 +253,12 @@ namespace Lifespan
                 $"{member.firstName} managed to complete a real task today.",
                 $"I am so proud of {member.firstName} for learning that."
             };
-            TriggerSpeech(observer, lines[_random.Next(lines.Length)]);
+            TriggerSpeech(observer, lines[_random.Range(0, lines.Length)]);
         }
 
         private void TriggerElderPhilosophy(FamilyMember member)
         {
-            int category = _random.Next(4);
+            int category = _random.Range(0, 4);
             string[] lines;
 
             switch (category)
@@ -296,7 +301,7 @@ namespace Lifespan
                     break;
             }
 
-            TriggerSpeech(member, lines[_random.Next(lines.Length)]);
+            TriggerSpeech(member, lines[_random.Range(0, lines.Length)]);
         }
 
         private void InsertJournalEntry(string text)
@@ -358,7 +363,7 @@ namespace Lifespan
             }
 
             // Ensure variety by avoiding the immediate last line spoken by this member
-            string selectedLine = options[_random.Next(options.Count)];
+            string selectedLine = options[_random.Range(0, options.Count)];
             int memberId = member.GetId();
             
             if (_lastSpeechLine.ContainsKey(memberId))
@@ -367,7 +372,7 @@ namespace Lifespan
                 for (int i = 0; i < 3; i++)
                 {
                     if (selectedLine.GetHashCode() != _lastSpeechLine[memberId]) break;
-                    selectedLine = options[_random.Next(options.Count)];
+                    selectedLine = options[_random.Range(0, options.Count)];
                 }
             }
             
@@ -379,7 +384,7 @@ namespace Lifespan
         {
             // Simplified to 5 core shelter items
             string[] items = { "ration", "can of water", "bandage", "bit of soap", "proper book" };
-            return items[_random.Next(items.Length)];
+            return items[_random.Range(0, items.Length)];
         }
         #endregion
     }

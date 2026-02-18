@@ -14,7 +14,7 @@ namespace Lifespan
         private readonly LifespanConfig _config;
         private readonly IModLogger _log;
         private readonly AgeTracker _ageTracker;
-        private readonly System.Random _random;
+        private readonly ModRandomStream _random;
         private DialogueScheduler _scheduler;
 
         private const int MAX_AGE_DEATH_REASON_THRESHOLD_WEEKS = 104;
@@ -22,12 +22,12 @@ namespace Lifespan
         private const float FATAL_DAMAGE_AMOUNT = 999f;
         private IModLogger Log => _log;
  
-        public DeathManager(IPluginContext ctx, LifespanConfig config, AgeTracker ageTracker)
+        public DeathManager(IPluginContext ctx, LifespanConfig config, AgeTracker ageTracker, ModRandomStream random)
         {
             _config = config;
             _log = ctx.Log;
             _ageTracker = ageTracker;
-            _random = new System.Random();
+            _random = random;
         }
 
         public void SetScheduler(DialogueScheduler scheduler)
@@ -133,7 +133,7 @@ namespace Lifespan
 
             // 1. Probability of death increases with age past elder threshold
             int elderWeeks = _config.elderAgeYears * 52;
-            if (ageWeeks > elderWeeks)
+            if (ageWeeks >= elderWeeks)
             {
                 float yearsPastElder = (float)(ageWeeks - elderWeeks) / 52f;
                 // Config is now Percentage (0-100), convert to 0-1
@@ -145,7 +145,7 @@ namespace Lifespan
                 
                 float finalProb = baseProb * healthImpact * _config.deathProbabilityMultiplier;
 
-                float roll = (float)_random.NextDouble();
+                float roll = _random.Value();
                 if (Log.IsDebugEnabled) Log.Debug($"Death Roll for {member.firstName}: {roll:F5} VS Prob: {finalProb:F5} (Base: {baseProb:F4}, HP Impact: {healthImpact:F2}, Mult: {_config.deathProbabilityMultiplier}).");
 
                 if (roll < finalProb)
@@ -156,13 +156,13 @@ namespace Lifespan
                     string reason = (ageWeeks >= 80 * 52) ? "Old age" : "Natural causes";
                     
                     // Brief delay 0-6 days to spread out mass deaths
-                    int dayOffset = _random.Next(0, SCHEDULE_DEATH_RANDOM_OFFSET_DAYS); 
+                    int dayOffset = _random.Range(0, SCHEDULE_DEATH_RANDOM_OFFSET_DAYS); 
                     ScheduleDeath(member, reason, dayOffset);
                 }
             }
             else
             {
-                if (Log.IsDebugEnabled) Log.Debug($"{member.firstName} is below elder age threshold.");
+                if (Log.IsDebugEnabled) Log.Debug($"{member.firstName} is below elder age threshold ({ageWeeks/52}y < {_config.elderAgeYears}y).");
             }
         }
 
@@ -176,7 +176,7 @@ namespace Lifespan
         public void ScheduleDeath(FamilyMember member, string reason)
         {
             // Randomize offset 0-6 days
-            int offset = _random.Next(0, SCHEDULE_DEATH_RANDOM_OFFSET_DAYS);
+            int offset = _random.Range(0, SCHEDULE_DEATH_RANDOM_OFFSET_DAYS);
             ScheduleDeath(member, reason, offset);
         }
 
@@ -199,14 +199,14 @@ namespace Lifespan
         {
             if (member == null || member.isDead) return;
 
-            string phrase = _surgePhrases[_random.Next(_surgePhrases.Length)];
+            string phrase = _surgePhrases[_random.Range(0, _surgePhrases.Length)];
             if (Log.IsDebugEnabled) Log.Debug($"Starting Surge for {member.firstName}. Phrase: \"{phrase}\"");
 
             // Trigger the character's speech bubble
             TriggerSpeech(member, phrase, DialogueScheduler.Priority.Reactive);
 
             // Use constants
-            float delay = (float)(_random.NextDouble() * (_config.surgeMaxDelay - _config.surgeMinDelay) + _config.surgeMinDelay);
+            float delay = _random.Value() * (_config.surgeMaxDelay - _config.surgeMinDelay) + _config.surgeMinDelay;
             _surgeDeaths.Add(new SurgeDeath
             {
                 Member = member,
@@ -343,7 +343,7 @@ namespace Lifespan
                 "I never thought {0} could look so peaceful. I'll catch up with you later.",
                 "Go on without me. {0} is a good place to rest."
             };
-            string msg = string.Format(templates[_random.Next(templates.Length)], biomeName);
+            string msg = string.Format(templates[_random.Range(0, templates.Length)], biomeName);
 
             // 4. Setup Radio Params
             var radioParams = new ExplorationManager.RadioDialogParams();

@@ -120,11 +120,15 @@ namespace Lifespan
                     // Update DevGeneManager with new hot-reloaded values
                     if (_devGeneManager != null) _devGeneManager.RefreshSettings(_config);
 
-                    // Persist to spine_settings.json using Spine infrastructure
-                    var definitions = ModAPI.Spine.SpineSettingsHelper.Scan(_config);
-                    ModAPI.Spine.SettingsSerializer.Save(_ctx.Mod.Id, _config, definitions);
-                    
-                    _log.Info("Configuration updated and saved to spine_settings.json.");
+                    if (_ctx.Mod.SettingsProvider is ModAPI.Spine.SettingsController controller)
+                    {
+                        controller.Save();
+                        _log.Info("Configuration updated and saved via SettingsController.");
+                    }
+                    else
+                    {
+                        _log.Warn("Could not save configuration: SettingsProvider is not a SettingsController.");
+                    }
                 }
                 catch (System.Exception ex)
                 {

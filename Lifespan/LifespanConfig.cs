@@ -1,5 +1,6 @@
 using System;
 using ModAPI.Spine;
+using ModAPI.Attributes;
 using UnityEngine;
 
 namespace Lifespan
@@ -8,6 +9,7 @@ namespace Lifespan
     /// Configuration container for the Lifespan mod.
     /// Supports the ModAPI Spine settings framework for in-game UI generation.
     /// </summary>
+    [ModConfiguration]
     public class LifespanConfig
     {
         // ====================================================================
@@ -34,10 +36,10 @@ namespace Lifespan
         public bool enableChildDevelopment = true;
 
         [ModSetting("Mobile Age", Tooltip = "Age (years) when children become mobile. Before this, they are immobile and need care.", Category = "Development", MinValue = 1, MaxValue = 10, StepSize = 1, SortOrder = 41)]
-        public int mobileAgeYears = 4;
+        public int mobileAgeYears = 1;
 
         [ModSetting("Child Job Age", Tooltip = "Age (years) when children can start doing jobs/tasks.", Category = "Development", MinValue = 1, MaxValue = 15, StepSize = 1, SortOrder = 42)]
-        public int childJobAgeYears = 4;
+        public int childJobAgeYears = 6;
 
         [ModSetting("Expedition (Accompanied) Age", Tooltip = "Min age (years) to go on expeditions with an adult.", Category = "Development", MinValue = 5, MaxValue = 18, StepSize = 1, SortOrder = 43)]
         public int expeditionMinAgeAccompanied = 10;
@@ -134,10 +136,11 @@ namespace Lifespan
         [ModSettingPreset("Hard", 2.0f)]
         public float deathProbabilityMultiplier = 1.0f; 
 
-        [ModSetting("Base Death Probability (%)", Tooltip = "Base chance (0-100%) of death per week once past elder threshold.", Category = "Constant Settings", MinValue = 0f, MaxValue = 1.0f, SortOrder = 19)]
-        public float deathBaseProbability = 0.05f;
+        [ModSetting("Base Death Probability (%)", Tooltip = "Base chance (0-100%) of death per week once past elder threshold.", Category = "Constant Settings", MinValue = 0f, MaxValue = 1.0f, StepSize = 0.001f, SortOrder = 19)]
+        public float deathBaseProbability = 0.05f; // 0.05% per week at elder threshold
 
-        public float deathProbabilityIncreasePerYear = 0.008f; 
+        [ModSetting("Death Probability Increase Per Year (%)", Tooltip = "How much the death chance increases each year past elder threshold.", Category = "Constant Settings", MinValue = 0f, MaxValue = 0.1f, StepSize = 0.001f, SortOrder = 20)]
+        public float deathProbabilityIncreasePerYear = 0.008f; // 0.008% increase per year 
 
         /// <summary>How significantly low health increases the probability of natural death.</summary>
         public float healthImpactFactor = 10f;
@@ -181,6 +184,9 @@ namespace Lifespan
 
         [ModSetting("Enable Debug Keys (F7)", Tooltip = "Enables F7 to force age-up and test death.", Category = "Constant Settings", SortOrder = 24)]
         public bool enableDebugKeys = false;
+
+        [ModSetting("Custom Seed", Tooltip = "Forces a specific random seed for genetic rolls and illness. Set to 0 to use standard save-based randomness.", Category = "Constant Settings", SortOrder = 25)]
+        public int customSeed = 0;
 
         /// <summary>
         /// Validates and clamps configuration values to ensure logical consistency.

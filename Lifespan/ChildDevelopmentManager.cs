@@ -100,5 +100,15 @@ namespace Lifespan
              if (!_config.enableChildDevelopment) return false;
              return GetStage(member) == ChildStage.Newborn;
         }
+
+        /// <summary>
+        /// Checks if the member is old enough to lead an expedition or go solo (default 13+).
+        /// </summary>
+        public bool IsSoloExpeditionCapable(FamilyMember member)
+        {
+            if (!_config.enableChildDevelopment) return true;
+            int ageYears = _ageTracker.GetAgeYears(member);
+            return ageYears >= _config.expeditionMinAgeSolo;
+        }
     }
 }

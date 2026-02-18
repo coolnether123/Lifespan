@@ -15,9 +15,8 @@ namespace Lifespan
     /// Main plugin entry point for the Lifespan mod.
     /// Handles initialization, life cycle events, and settings integration.
     /// </summary>
-    public class LifespanPlugin : ModManagerBase, IModPlugin, IModUpdate, IModShutdown, ISettingsProvider
+    public class LifespanPlugin : ModManagerBase<LifespanConfig>, IModPlugin, IModUpdate, IModShutdown
     {
-        private LifespanConfig _config;
         private AgeTracker _ageTracker;
         private MilestoneManager _milestoneManager; 
         private ChildTransitionManager _childManager;
@@ -66,23 +65,20 @@ namespace Lifespan
                 base.Initialize(ctx); // REQUIRED for v1.2 attribute binding
                 Instance = this;
                 
-                // 1. Setup Configuration & Core components (early for save system registration)
-                if (_config == null) _config = new LifespanConfig(); 
-                
                 _dialogueScheduler = new DialogueScheduler(Log);
                 
                 // Use local 'ctx' to ensure we don't hit property null refs
-                _ageTracker = new AgeTracker(ctx, _config);
-                _childManager = new ChildTransitionManager(ctx, _config, _ageTracker);
-                _illnessManager = new ElderIllnessManager(ctx, _config, _ageTracker);
-                _milestoneManager = new MilestoneManager(ctx, _config, _ageTracker); 
-                _deathManager = new DeathManager(ctx, _config, _ageTracker);
-                _devGeneManager = new DevelopmentGeneManager(ctx, _config, _ageTracker);
+                _ageTracker = new AgeTracker(ctx, Config, this.Random);
+                _childManager = new ChildTransitionManager(ctx, Config, _ageTracker, this.Random);
+                _illnessManager = new ElderIllnessManager(ctx, Config, _ageTracker, this.Random);
+                _milestoneManager = new MilestoneManager(ctx, Config, _ageTracker, this.Random); 
+                _deathManager = new DeathManager(ctx, Config, _ageTracker, this.Random);
+                _devGeneManager = new DevelopmentGeneManager(ctx, Config, _ageTracker, this.Random);
                 
-                _childDevManager = new ChildDevelopmentManager(ctx, _config, _ageTracker);
-                _nurseJobGiver = new NurseJobGiver(ctx, _childDevManager);
+                _childDevManager = new ChildDevelopmentManager(ctx, Config, _ageTracker);
+                _nurseJobGiver = new NurseJobGiver(ctx, _childDevManager, _dialogueScheduler);
                 
-                _debugManager = new DebugManager(Log, _config);
+                _debugManager = new DebugManager(Log, Config);
 
                 ResetAllState();
                 Log.Debug("Initialize() complete.");
@@ -110,7 +106,7 @@ namespace Lifespan
 
             // 3. Register API
             Log.Debug("Registering ILifespanAPI...");
-            _api = new LifespanAPIImpl(Context, _config, _ageTracker, _illnessManager, _devGeneManager, _childDevManager);
+            _api = new LifespanAPIImpl(Context, Config, _ageTracker, _illnessManager, _devGeneManager, _childDevManager);
             ModAPIRegistry.RegisterAPI<ILifespanAPI>("com.lifespan.api", _api, Context.Mod.Id);
 
             // 4. Initialize Harmony Patches
@@ -133,7 +129,7 @@ namespace Lifespan
             }
 
             // Initialize Child Capability Patches
-            if (_config.enableChildDevelopment)
+            if (Config.enableChildDevelopment)
             {
                 Log.Debug("Initializing Child Capability Patches...");
                 ChildCapabilityPatches.Initialize(Context, _childDevManager);
@@ -228,13 +224,13 @@ namespace Lifespan
 
         public void Update()
         {
-            if (_config == null) return; // Prevent crash if init failing
+            if (Config == null) return; // Prevent crash if init failing
             
             _debugManager?.Update();
             _deathManager?.Update();
             _dialogueScheduler?.Update();
             
-            if (_config.enableChildDevelopment)
+            if (Config.enableChildDevelopment)
                 _nurseJobGiver?.Update();
 
             UpdateHairTransitions();
@@ -243,7 +239,7 @@ namespace Lifespan
         private void UpdateHairTransitions()
         {
             // Feature Toggle
-            if (!_config.enableHairGreying)
+            if (!Config.enableHairGreying)
             {
                 if (_activeTransitions.Count > 0) _activeTransitions.Clear();
                 return;
@@ -252,8 +248,8 @@ namespace Lifespan
             if (_activeTransitions.Count == 0) return;
 
             float dt = UnityEngine.Time.deltaTime;
-            float lerpSpeed = _config.hairGreyingLerpSpeed * dt; 
-            float maxDuration = _config.hairGreyingMaxDuration;
+            float lerpSpeed = Config.hairGreyingLerpSpeed * dt; 
+            float maxDuration = Config.hairGreyingMaxDuration;
 
             // Performance: Cap the number of mesh updates per frame
             const int TRANSITION_FRAME_BUDGET = 5;
@@ -333,13 +329,13 @@ namespace Lifespan
             }
             
             // 1. Check if we should age this week based on interval
-            if (GameTime.Week % _config.agingIntervalWeeks != 0)
+            if (GameTime.Week % Config.agingIntervalWeeks != 0)
             {
-                if (Log.IsDebugEnabled) Log.Debug($"Skipping aging this week (Interval: {_config.agingIntervalWeeks}).");
+                if (Log.IsDebugEnabled) Log.Debug($"Skipping aging this week (Interval: {Config.agingIntervalWeeks}).");
                 return;
             }
 
-            Log.Debug($"Processing aging for members (+{_config.weeksAgedPerInterval} weeks).");
+            Log.Debug($"Processing aging for members (+{Config.weeksAgedPerInterval} weeks).");
             
             var members = FamilyManager.Instance.GetAllFamilyMembers();
             if (members == null)
@@ -377,23 +373,23 @@ namespace Lifespan
                     continue;
                 }
 
-                int newAgeWeeks = _ageTracker.IncrementAge(member, _config.weeksAgedPerInterval);
+                int newAgeWeeks = _ageTracker.IncrementAge(member, Config.weeksAgedPerInterval);
 
                 if (Log.IsDebugEnabled)
                 {
                     Log.Info($"Incrementing age for '{member.firstName}' to {newAgeWeeks} weeks.");
                 }
  
-                if (Log.IsDebugEnabled) Log.Info($"Checking child transition for '{member.firstName}'. (IsChild: {member.isChild}, Age: {newAgeWeeks} weeks, Threshold: {_config.adultAgeYears * 52} weeks)");
-                int adultWeeks = _config.adultAgeYears * 52;
+                if (Log.IsDebugEnabled) Log.Info($"Checking child transition for '{member.firstName}'. (IsChild: {member.isChild}, Age: {newAgeWeeks} weeks, Threshold: {Config.adultAgeYears * 52} weeks)");
+                int adultWeeks = Config.adultAgeYears * 52;
                 if (member.isChild && newAgeWeeks >= adultWeeks)
                 {
                     Log.Info($"{member.firstName} has reached adulthood.");
                     _childManager.TransitionToAdult(member);
                 }
 
-                if (Log.IsDebugEnabled) Log.Info($"Checking elder illness for '{member.firstName}'. (Age: {newAgeWeeks} weeks, Threshold: {_config.elderAgeYears * 52} weeks)");
-                int elderWeeks = _config.elderAgeYears * 52;
+                if (Log.IsDebugEnabled) Log.Info($"Checking elder illness for '{member.firstName}'. (Age: {newAgeWeeks} weeks, Threshold: {Config.elderAgeYears * 52} weeks)");
+                int elderWeeks = Config.elderAgeYears * 52;
                 if (newAgeWeeks >= elderWeeks)
                 {
                     if (Log.IsDebugEnabled) Log.Info($"{member.firstName} is an elder. Processing illness roll...");
@@ -402,7 +398,7 @@ namespace Lifespan
 
                 if (Log.IsDebugEnabled) Log.Info($"Processing hair greying, development, and milestones for '{member.firstName}'.");
                 ProcessHairGreying(member, newAgeWeeks);
-                _devGeneManager.ProcessDevelopment(member, newAgeWeeks, _config.weeksAgedPerInterval);
+                _devGeneManager.ProcessDevelopment(member, newAgeWeeks, Config.weeksAgedPerInterval);
                 _milestoneManager.ProcessMilestones(member, newAgeWeeks);
 
                 if (member.isDead)
@@ -413,7 +409,7 @@ namespace Lifespan
  
                 if (Log.IsDebugEnabled) Log.Info($"Processing death roll for '{member.firstName}'.");
                 
-                if (_config.enableNaturalDeath)
+                if (Config.enableNaturalDeath)
                 {
                     _deathManager.ProcessDeathRoll(member, newAgeWeeks);
                 }
@@ -437,7 +433,7 @@ namespace Lifespan
             if (_api != null)
             {
                 Log.Debug("Processing aging for external characters (NPCs)...");
-                _api.UpdateExternalCharacters(_config.weeksAgedPerInterval);
+                _api.UpdateExternalCharacters(Config.weeksAgedPerInterval);
             }
 
             // Force UI update for selected character portrait
@@ -449,7 +445,7 @@ namespace Lifespan
 
         private void ProcessHairGreying(FamilyMember member, int ageWeeks)
         {
-            if (!_config.enableHairGreying) return;
+            if (!Config.enableHairGreying) return;
 
             try
             {
@@ -561,40 +557,6 @@ namespace Lifespan
             Log.Info("Mod shut down.");
         }
 
-        // ====================================================================
-        // ISETTINGSPROVIDER IMPLEMENTATION
-        // ====================================================================
-
-        /// <summary>
-        /// Provides the metadata for the ModAPI settings UI.
-        /// </summary>
-        public IEnumerable<SettingDefinition> GetSettings()
-        {
-            if (_config == null) _config = new LifespanConfig();
-            return SpineSettingsHelper.Scan(_config);
-        }
-
-        public override void OnSettingsLoaded()
-        {
-            // Sync static logger enabled state
-            // Log.IsDebugEnabled is read-only, controlled by ModAPI core
-            if (_config != null)
-                Log.Info($"Settings auto-loaded (Verbose: {_config.verboseLogging})");
-        }
-
-        public void ResetToDefaults()
-        {
-            // Fix: Don't replace the object (managers hold a reference to it).
-            // Instead, create a temporary default one and copy values over, 
-            // or just use JsonUtility to overwrite from a fresh instance.
-            var defaults = new LifespanConfig();
-            string json = JsonUtility.ToJson(defaults);
-            JsonUtility.FromJsonOverwrite(json, _config);
-            
-            Log.Info("Settings reset to defaults (values overridden in current instance).");
-        }
-
-        public object GetSettingsObject() => _config ?? (_config = new LifespanConfig());
 
     }
 }

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using ModAPI.Core;
 
 namespace Lifespan
 {
@@ -63,28 +64,28 @@ namespace Lifespan
         /// <summary>
         /// Generates a random development gene for a new character.
         /// </summary>
-        public static DevelopmentGene GenerateRandom(System.Random rng)
+        public static DevelopmentGene GenerateRandom(ModRandomStream rng)
         {
             var gene = new DevelopmentGene();
 
             // Pre-Adult: Children have high growth potential (2-6 stat points)
-            gene.PreAdultPotential = rng.Next(2, 7);
+            gene.PreAdultPotential = rng.Range(2, 7);
 
             // Post-Adult: Adults have moderate growth (1-4 stat points)
-            gene.PostAdultPotential = rng.Next(1, 5);
+            gene.PostAdultPotential = rng.Range(1, 5);
 
             // Pre-Elder: Slight boost before decline (0-2 stat points)
-            gene.PreElderPotential = rng.Next(0, 3);
+            gene.PreElderPotential = rng.Range(0, 3);
 
             // Post-Elder: Minimal growth in old age (0-1 stat points)
-            gene.PostElderPotential = rng.Next(0, 2);
+            gene.PostElderPotential = rng.Range(0, 2);
 
             // Randomize stat weights (some genes favor certain stats)
-            gene.StrengthWeight = 0.5f + (float)rng.NextDouble();
-            gene.DexterityWeight = 0.5f + (float)rng.NextDouble();
-            gene.IntelligenceWeight = 0.5f + (float)rng.NextDouble();
-            gene.CharismaWeight = 0.5f + (float)rng.NextDouble();
-            gene.PerceptionWeight = 0.5f + (float)rng.NextDouble();
+            gene.StrengthWeight = 0.5f + rng.Value();
+            gene.DexterityWeight = 0.5f + rng.Value();
+            gene.IntelligenceWeight = 0.5f + rng.Value();
+            gene.CharismaWeight = 0.5f + rng.Value();
+            gene.PerceptionWeight = 0.5f + rng.Value();
 
             return gene;
         }
