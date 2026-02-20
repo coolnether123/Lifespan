@@ -11,8 +11,9 @@ using UnityEngine;
 namespace Lifespan
 {
     /// <summary>
-    /// Tracks the age of all family members and relevant NPCs in weeks.
-    /// Persists age data per-save using save events.
+    /// Core component of the Lifespan mod. Tracks biological age for all family members and NPCs in weeks.
+    /// Handles age generation using normal distributions, accelerated childhood logic, and persistence 
+    /// of both age data and dialogue history across save/load cycles.
     /// </summary>
     public class AgeTracker
     {
@@ -21,9 +22,28 @@ namespace Lifespan
         private readonly IPluginContext _ctx;
         private readonly ModRandomStream _random;
         private AgeData _currentAgeData;
-        private AgeDataSerializable _saveContainer; // v1.2 persistent container
+        private AgeDataSerializable _saveContainer; 
+        
         private IModLogger Log => _log;
 
+        // --- Biological Constants ---
+
+        private const int InitialFamilyGenerationDay = 1;
+        private const int StartChildAgeMin = 10;
+        private const int StartChildAgeMax = 17;
+        private const int StartChildAgeMean = 13;
+
+        private const int AdultMinAge = 18;
+        private const int AdultMaxAge = 90;
+        private const int StandardAgeVariance = 2;
+        private const int AdultAgeVariance = 14;
+
+        /// <summary>
+        /// Initializes a new instance of the AgeTracker.
+        /// </summary>
+        /// <param name="ctx">Plugin context for accessing save systems and logging.</param>
+        /// <param name="config">Lifespan configuration settings.</param>
+        /// <param name="random">Seeded random stream for deterministic age generation.</param>
         public AgeTracker(IPluginContext ctx, LifespanConfig config, ModRandomStream random)
         {
             _ctx = ctx;
@@ -32,11 +52,15 @@ namespace Lifespan
             _currentAgeData = new AgeData();
             _random = random;
             
-            // Register for automatic v1.2 isolated save data
+            // Register for automatic v1.2 isolated save data tagging.
+            // This ensures data is specific to this mod and won't collide with others.
             _saveContainer = new AgeDataSerializable();
             _ctx.SaveSystem.RegisterModData("LifeSpan.AgeData", _saveContainer);
         }
 
+        /// <summary>
+        /// Clear all tracking data. Typically called when starting a new game or changing slots.
+        /// </summary>
         public void Reset()
         {
             Log.Debug("Resetting tracking data for fresh session.");
@@ -44,51 +68,68 @@ namespace Lifespan
             _saveContainer = new AgeDataSerializable(); // Clear container too
         }
 
-        public int AdultAgeWeeks => _config.adultAgeYears * 52;
+        /// <summary>
+        /// Calculated threshold for adulthood in weeks based on configuration.
+        /// </summary>
+        public int AdultAgeWeeks => _config.adultAgeYears * LifespanConstants.WeeksPerYear;
 
+        /// <summary>
+        /// Generates a random integer follow a Normal (Gaussian) distribution.
+        /// Uses the Box-Muller transform for high-quality distribution.
+        /// </summary>
+        /// <param name="mean">The center of the distribution.</param>
+        /// <param name="stdDev">The spread (standard deviation) of the distribution.</param>
+        /// <returns>A normally distributed integer.</returns>
         private int NormalDistribution(int mean, int stdDev)
         {
-            // Use static ModRandom.Gaussian for simplicity or implement on stream
-            // Since ModRandomStream doesn't have Gaussian yet, we use the static one
-            // but tie it to the seed or just use the math here with stream values.
-            
-            // Box-Muller transform using stream
+            // Box-Muller transform using the seeded random stream
             double u1 = 1.0 - _random.Value(); 
             double u2 = 1.0 - _random.Value();
             double randStdNormal = Math.Sqrt(-2.0 * Math.Log(u1)) * Math.Sin(2.0 * Math.PI * u2); 
             return (int)(mean + stdDev * randStdNormal);
         }
 
+        /// <summary>
+        /// Generates a starting age for a character during the early-game initialization phase.
+        /// </summary>
+        /// <param name="member">The family member to generate for.</param>
+        /// <param name="isChild">Whether the character is currently categorized as a child.</param>
+        /// <returns>Age in weeks.</returns>
         public int GenerateInitialAge(FamilyMember member, bool isChild)
         {
             if (isChild)
             {
-                // Starting kids (Day 1) are 10-17. 
-                // Subsequent recruits/NPCs use config value.
-                int mean = (GameTime.Day <= 1) ? 13 : _config.initialChildAgeYears;
-                int min = (GameTime.Day <= 1) ? 10 : 0;
-                return Mathf.Clamp(NormalDistribution(mean, 2), min, 17) * 52;
+                // During initial family generation (Day 1), children are constrained to a narrower age range (10-17).
+                // recruits and subsequent character generation use configured defaults.
+                bool isInitialGeneration = GameTime.Day <= InitialFamilyGenerationDay;
+                
+                int mean = isInitialGeneration ? StartChildAgeMean : _config.initialChildAgeYears;
+                int min = isInitialGeneration ? StartChildAgeMin : 0;
+                int max = StartChildAgeMax;
+                
+                return Mathf.Clamp(NormalDistribution(mean, StandardAgeVariance), min, max) * LifespanConstants.WeeksPerYear;
             }
             else
             {
-                // Most adults 32-45, some younger/older
-                // Shifted mean to 32 to help distinguish "Reset" ages from legitimate young adults
-                return Mathf.Clamp(NormalDistribution(32, 14), 18, 90) * 52;
+                // Adults approximate a standard population distribution centered on the recruit age configuration.
+                return Mathf.Clamp(NormalDistribution(_config.initialAdultAgeYears, AdultAgeVariance), AdultMinAge, AdultMaxAge) * LifespanConstants.WeeksPerYear;
             }
         }
 
         /// <summary>
-        /// Generates age for any character based on context.
-        /// Called by NPCs, recruits, explorers, and pregnancy mod.
+        /// Context-aware age generator for varying gameplay scenarios (Recruits, Traders, Explorers).
         /// </summary>
+        /// <param name="character">The character to evaluate.</param>
+        /// <param name="context">The gameplay scenario triggering the generation.</param>
+        /// <returns>Age in weeks.</returns>
         public int GenerateAgeForContext(BaseCharacter character, AgeContext context)
         {
             if (character == null) return 0;
             
-            // Check if we already know this character's age (for NPCs that might be saved across sessions)
             int id = character.GetId();
             bool isFamilyMember = character is FamilyMember;
 
+            // Check if we already have data to prevent re-rolling
             if (isFamilyMember && _currentAgeData.familyMemberAges.ContainsKey(id))
             {
                 return _currentAgeData.familyMemberAges[id];
@@ -99,7 +140,7 @@ namespace Lifespan
                 return _currentAgeData.externalCharacterAges[id];
             }
 
-            // Generate based on context
+            // Route generation to specific handlers
             int ageWeeks;
             switch (context)
             {
@@ -113,14 +154,14 @@ namespace Lifespan
                     ageWeeks = GenerateTraderAge(character);
                     break;
                 case AgeContext.NewbornFromPregnancy:
-                    ageWeeks = 0; // 0 weeks for newborns
+                    ageWeeks = 0;
                     break;
                 default:
                     ageWeeks = GenerateDefaultNPCAge(character);
                     break;
             }
 
-            // Store in the correct map so FamilyMembers never fall back to random family initialization.
+            // Commit to memory
             if (isFamilyMember)
             {
                 _currentAgeData.familyMemberAges[id] = ageWeeks;
@@ -134,7 +175,7 @@ namespace Lifespan
                 _currentAgeData.externalCharacterAges[id] = ageWeeks;
             }
             
-            // Publish event for other mods
+            // Notify other mod systems (API Hook)
             ModEventBus.Publish("Lifespan.CharacterAgeGenerated", 
                 new CharacterAgeGeneratedArgs(character, ageWeeks, context));
             
@@ -143,36 +184,33 @@ namespace Lifespan
 
         private int GenerateExplorerAge(BaseCharacter character)
         {
-            return Mathf.Clamp(NormalDistribution(_config.explorerMeanAge, _config.explorerStdDev), 18, 55) * 52;
+            return Mathf.Clamp(NormalDistribution(_config.explorerMeanAge, _config.explorerStdDev), AdultMinAge, 55) * LifespanConstants.WeeksPerYear;
         }
 
         private int GenerateShelterRecruitAge(BaseCharacter character)
         {
-            return Mathf.Clamp(NormalDistribution(_config.recruiterMeanAge, _config.recruiterStdDev), 18, 80) * 52;
+            return Mathf.Clamp(NormalDistribution(_config.recruiterMeanAge, _config.recruiterStdDev), AdultMinAge, 80) * LifespanConstants.WeeksPerYear;
         }
 
         private int GenerateTraderAge(BaseCharacter character)
         {
-            return Mathf.Clamp(NormalDistribution(_config.traderMeanAge, _config.traderStdDev), 25, 70) * 52;
+            return Mathf.Clamp(NormalDistribution(_config.traderMeanAge, _config.traderStdDev), 25, 70) * LifespanConstants.WeeksPerYear;
         }
 
         private int GenerateDefaultNPCAge(BaseCharacter character)
         {
-            return Mathf.Clamp(NormalDistribution(35, 12), 18, 65) * 52;
+            return Mathf.Clamp(NormalDistribution(35, 12), AdultMinAge, 65) * LifespanConstants.WeeksPerYear;
         }
 
         /// <summary>
-        /// Gets the age of a family member in weeks by ID.
-        /// Returns 0 if not found.
+        /// Retrieves age from the cache based on character ID.
         /// </summary>
         public int GetAgeWeeks(int id)
         {
-            // Check family members first
             if (_currentAgeData.familyMemberAges.ContainsKey(id))
             {
                 return _currentAgeData.familyMemberAges[id];
             }
-            // Check external characters
             if (_currentAgeData.externalCharacterAges.ContainsKey(id))
             {
                 return _currentAgeData.externalCharacterAges[id];
@@ -181,14 +219,12 @@ namespace Lifespan
         }
 
         /// <summary>
-        /// Gets the age of a family member by name.
-        /// Useful when ID is not available (e.g. legacy ObituaryInfo).
+        /// Legacy resolver for Obituaries where IDs might be missing. Use sparingly.
         /// </summary>
         public int GetAgeWeeksByName(string firstName)
         {
             if (string.IsNullOrEmpty(firstName)) return 0;
 
-            // 1. Try to resolve from active family members
             if (FamilyManager.Instance != null)
             {
                 var members = FamilyManager.Instance.GetAllFamilyMembers();
@@ -204,7 +240,7 @@ namespace Lifespan
                 }
             }
 
-            // 2. Fallback: Search deceased profiles (this requires a reverse lookup check)
+            // Check graveyard records
             if (FamilyManager.Instance != null)
             {
                 var deadInfo = FamilyManager.Instance.GetDeadFamilyMemberInfo();
@@ -228,8 +264,7 @@ namespace Lifespan
         }
 
         /// <summary>
-        /// Gets the age of a family member in weeks.
-        /// Returns 0 if not tracked yet (new member).
+        /// Returns age in weeks, generating it if the character is new to the system.
         /// </summary>
         public int GetAgeWeeks(FamilyMember member)
         {
@@ -242,19 +277,18 @@ namespace Lifespan
                 return _currentAgeData.familyMemberAges[memberId];
             }
 
-            // New member - initialize using Gaussian distribution
+            // Lazy initialization for members recruited through vanilla means
             int initialAge = GenerateInitialAge(member, member.isChild);
             _currentAgeData.familyMemberAges[memberId] = initialAge;
-            if (Log.IsDebugEnabled) _log.Info($"Initialized age for {member.firstName} to {initialAge / 52} years (ID: {memberId}).");
+            if (Log.IsDebugEnabled) _log.Info($"Initialized age for {member.firstName} to {initialAge / LifespanConstants.WeeksPerYear} years (ID: {memberId}).");
             
-            // Fire event for other mods
             ModEventBus.Publish("Lifespan.AgeInitialized", new AgeChangedArgs(member, initialAge, 0));
 
             return initialAge;
         }
 
         /// <summary>
-        /// Gets the age of any character (FamilyMember or NPC) in weeks.
+        /// Generic accessor for any character type.
         /// </summary>
         public int GetAgeWeeks(BaseCharacter character)
         {
@@ -275,7 +309,7 @@ namespace Lifespan
         }
 
         /// <summary>
-        /// Sets the age of an external character (NPC).
+        /// Manually update NPC age (e.g. from an external mod).
         /// </summary>
         public void SetExternalCharacterAge(int id, int ageWeeks)
         {
@@ -283,15 +317,15 @@ namespace Lifespan
         }
 
         /// <summary>
-        /// Gets the age of a family member in years.
+        /// Helper for UI and Dialogue where years are more readable.
         /// </summary>
         public int GetAgeYears(FamilyMember member)
         {
-            return GetAgeWeeks(member) / 52;
+            return GetAgeWeeks(member) / LifespanConstants.WeeksPerYear;
         }
 
         /// <summary>
-        /// Sets the age of a family member in weeks.
+        /// Overrides a member's age. Only use for debugging or special events.
         /// </summary>
         public void SetAgeWeeks(FamilyMember member, int weeks)
         {
@@ -300,11 +334,11 @@ namespace Lifespan
 
             int memberId = member.GetId();
             _currentAgeData.familyMemberAges[memberId] = Math.Max(0, weeks);
-            if (Log.IsDebugEnabled) _log.Info($"Manual age override: {member.firstName} set to {weeks / 52} years.");
+            if (Log.IsDebugEnabled) _log.Info($"Manual age override: {member.firstName} set to {weeks / LifespanConstants.WeeksPerYear} years.");
         }
 
         /// <summary>
-        /// Sets the age of any character in weeks.
+        /// Overrides any character's age.
         /// </summary>
         public void SetAgeWeeks(BaseCharacter character, int weeks)
         {
@@ -321,33 +355,34 @@ namespace Lifespan
         }
 
         /// <summary>
-        /// Increments the age of a family member by a specific amount of weeks.
-        /// <summary>
-        /// Increments the age of a family member by a specific amount of weeks.
-        /// Returns the new age in weeks.
-        /// </summary>
-
-        /// <summary>
-        /// Returns a list of all external character IDs currently tracked.
-        /// Useful for iteration during aging checks.
+        /// Returns all NPC/Explorer IDs currently in tracking.
         /// </summary>
         public List<int> GetAllTrackedExternalIds()
         {
             return new List<int>(_currentAgeData.externalCharacterAges.Keys);
         }
+
+        /// <summary>
+        /// Progresses a character's biological age. Accounts for accelerated childhood.
+        /// </summary>
+        /// <param name="member">The member to age.</param>
+        /// <param name="weeks">Amount of time passed.</param>
+        /// <returns>The new age in weeks.</returns>
         public int IncrementAge(FamilyMember member, int weeks)
         {
             if (object.ReferenceEquals(member, null)) return 0;
 
-            // GetAgeWeeks handles initialization if needed
             int currentAge = GetAgeWeeks(member);
             
-            // Accelerated Childhood logic: 2x speed until cutoff
+            // Progression Logic: Applies accelerated childhood aging if enabled.
+            // Note: Per design requirements, acceleration is inhibited for characters aged 10 and older.
             int increment = weeks;
-            if (_config.enableAcceleratedChildhood && (currentAge / 52) < _config.childhoodAccelerationCutoffAge)
+            int currentAgeYears = currentAge / LifespanConstants.WeeksPerYear;
+            
+            if (_config.enableAcceleratedChildhood && currentAgeYears < LifespanConstants.ChildhoodAccelerationStopAge)
             {
                 increment *= 2;
-                if (Log.IsDebugEnabled) Log.Debug($"[AgeTracker] Fast-aging applied to {member.firstName}: {weeks} -> {increment} weeks.");
+                if (Log.IsDebugEnabled) Log.Debug($"[AgeTracker] Accelerated biological aging applied to {member.firstName}: {weeks} -> {increment} weeks.");
             }
 
             int newAge = currentAge + increment;
@@ -355,10 +390,10 @@ namespace Lifespan
             int memberId = member.GetId();
             _currentAgeData.familyMemberAges[memberId] = newAge;
 
-            // Log if a new year is reached
-            if (newAge / 52 > currentAge / 52)
+            // Birthday logging
+            if (newAge / LifespanConstants.WeeksPerYear > currentAge / LifespanConstants.WeeksPerYear)
             {
-                if (Log.IsDebugEnabled) _log.Info($"BIRTHDAY! {member.firstName} is now {newAge / 52} years old.");
+                if (Log.IsDebugEnabled) _log.Info($"BIRTHDAY! {member.firstName} is now {newAge / LifespanConstants.WeeksPerYear} years old.");
             }
 
             if (Log.IsDebugEnabled) Log.Debug($"{member.firstName} aged to {newAge} weeks (+{increment}).");
@@ -367,19 +402,19 @@ namespace Lifespan
         }
 
         /// <summary>
-        /// Checks if a family member is an elder (past elder threshold).
+        /// Checks if a member has crossed the elder configuration threshold.
         /// </summary>
         public bool IsElder(FamilyMember member)
         {
             int ageWeeks = GetAgeWeeks(member);
-            bool isElder = ageWeeks >= (_config.elderAgeYears * 52);
-            if (isElder) Log.Debug($"{member.firstName} is an elder ({ageWeeks / 52}y).");
+            bool isElder = ageWeeks >= (_config.elderAgeYears * LifespanConstants.WeeksPerYear);
+            if (isElder && Log.IsDebugEnabled) Log.Debug($"{member.firstName} is classified as an elder ({ageWeeks / LifespanConstants.WeeksPerYear}y).");
             return isElder;
         }
 
         /// <summary>
-        /// Saves age data for the current save.
-        /// PersistentDataAPI automatically handles slot separation.
+        /// Synchronization point with the Sheltered Save System.
+        /// Call this before the game writes to disk to ensure the container is fresh.
         /// </summary>
         public void SaveAgeData()
         {
@@ -388,10 +423,10 @@ namespace Lifespan
             {
                 SyncWithFamilyManager();
 
-                // Update the registered container. SaveSystem handles the actual writing to disk.
+                // Convert current model to serializable format
                 var freshData = _currentAgeData.ToSerializable();
                 
-                // Overwrite the container managed by v1.2 SaveSystem
+                // Deep-copy to the registered container
                 _saveContainer.ages = freshData.ages;
                 _saveContainer.externalAges = freshData.externalAges;
                 _saveContainer.illnesses = freshData.illnesses;
@@ -400,8 +435,11 @@ namespace Lifespan
                 _saveContainer.onsetData = freshData.onsetData;
                 _saveContainer.deathDays = freshData.deathDays;
                 _saveContainer.deathAges = freshData.deathAges;
+                _saveContainer.triggeredMilestones = freshData.triggeredMilestones;
+                _saveContainer.lastBirthdays = freshData.lastBirthdays;
+                _saveContainer.dialogueHistory = freshData.dialogueHistory;
 
-                if (Log.IsDebugEnabled) _log.Info($"Synced {freshData.ages.Count} members and {freshData.externalAges.Count} NPCs to save container.");
+                if (Log.IsDebugEnabled) Log.Debug($"Synced {freshData.ages.Count} members and {freshData.externalAges.Count} NPCs to save container.");
             }
             catch (Exception ex)
             {
@@ -418,21 +456,19 @@ namespace Lifespan
             foreach (var member in members)
             {
                 if (object.ReferenceEquals(member, null)) continue;
-                // GetAgeWeeks handles initialization if member not tracked yet
                 GetAgeWeeks(member);
             }
         }
 
         /// <summary>
-        /// Loads age data for the current save.
-        /// PersistentDataAPI automatically handles slot separation.
+        /// Restores state from the save container.
+        /// In v1.2, the framework handles the actual disk read before this is called.
         /// </summary>
         public void LoadAgeData()
         {
             Log.Debug("Hydrating age data from SaveSystem container.");
             try
             {
-                // In v1.2, _saveContainer is automatically loaded by SaveSystem before OnAfterLoad
                 if (_saveContainer != null && (_saveContainer.ages.Count > 0 || _saveContainer.externalAges.Count > 0))
                 {
                     _currentAgeData = AgeData.FromSerializable(_saveContainer);
@@ -442,7 +478,7 @@ namespace Lifespan
                 {
                     _log.Warn("No records found in v1.2 save container. Check for legacy data...");
                     
-                    // Fallback to legacy v1.1 data if available
+                    // Backward compatibility: Migration from v1.1 file-based storage
                     AgeDataSerializable legacyData;
                     if (_ctx.LoadData("LifeSpan.AgeData", out legacyData))
                     {
@@ -476,14 +512,15 @@ namespace Lifespan
             {
                 if (!object.ReferenceEquals(member, null) && !member.isDead)
                 {
-                    // If the ID is somehow already tracked, GetAgeWeeks won't overwrite it.
-                    // But if we are here, _currentAgeData is likely empty.
                     int newAge = GetAgeWeeks(member);
-                    Log.Debug($"Generated FRESH age for {member.firstName}: {newAge / 52} years.");
+                    Log.Debug($"Generated FRESH age for {member.firstName}: {newAge / LifespanConstants.WeeksPerYear} years.");
                 }
             }
         }
 
+        /// <summary>
+        /// Purges orphans from tracking to prevent bloated save files.
+        /// </summary>
         public void CleanupMissingMembers()
         {
             if (FamilyManager.Instance == null) return;
@@ -499,7 +536,6 @@ namespace Lifespan
                 }
             }
 
-            // Also preserve IDs of dead characters so we can show their age in the obituary
             var deadMembers = FamilyManager.Instance.GetDeadFamilyMemberInfo();
             if (deadMembers != null)
             {
@@ -526,6 +562,9 @@ namespace Lifespan
             }
         }
 
+        /// <summary>
+        /// Retrieves active illnesses for a member.
+        /// </summary>
         public List<string> GetIllnesses(FamilyMember member)
         {
             if (member == null) return new List<string>();
@@ -537,6 +576,9 @@ namespace Lifespan
             return _currentAgeData.elderIllnesses[id];
         }
 
+        /// <summary>
+        /// Assigns a new age-related condition to a character.
+        /// </summary>
         public void AddIllness(FamilyMember member, string illnessId)
         {
             if (member == null) return;
@@ -548,6 +590,9 @@ namespace Lifespan
             }
         }
 
+        /// <summary>
+        /// Clears a condition from a character.
+        /// </summary>
         public void RemoveIllness(FamilyMember member, string illnessId)
         {
             if (member == null) return;
@@ -555,7 +600,6 @@ namespace Lifespan
             if (_currentAgeData.elderIllnesses.ContainsKey(id))
             {
                 _currentAgeData.elderIllnesses[id].Remove(illnessId);
-                // Also remove onset timing
                 if (_currentAgeData.onsetTiming.ContainsKey(id))
                 {
                     _currentAgeData.onsetTiming[id].Remove(illnessId);
@@ -564,6 +608,9 @@ namespace Lifespan
             }
         }
 
+        /// <summary>
+        /// Sets the predicted week for a condition stage transition.
+        /// </summary>
         public void SetOnsetWeek(FamilyMember member, string illnessId, int targetWeek)
         {
              if (member == null) return;
@@ -575,6 +622,9 @@ namespace Lifespan
              _currentAgeData.onsetTiming[id][illnessId] = targetWeek;
         }
 
+        /// <summary>
+        /// Gets the predicted transition week for a condition.
+        /// </summary>
         public int GetOnsetWeek(FamilyMember member, string illnessId)
         {
              if (member == null) return -1;
@@ -587,8 +637,8 @@ namespace Lifespan
         }
 
         /// <summary>
-        /// Gets or generates the hair greying profile for a member.
-        /// This determines when they start greying and how fast.
+        /// Returns the visual hair greying state profile.
+        /// Deterministic based on the character's unique GreyingGene.
         /// </summary>
         public GreyProfile GetOrGenerateGreyProfile(FamilyMember member)
         {
@@ -598,37 +648,27 @@ namespace Lifespan
             if (_currentAgeData.greyProfiles.ContainsKey(id))
             {
                 var existing = _currentAgeData.greyProfiles[id];
-                // Migration: If Gene is null (old save), generate it
                 if (existing.Gene == null)
                 {
                     existing.Gene = GreyingGene.GenerateRandom(_random);
-                    
-                    if (Log.IsDebugEnabled) Log.Debug($"[AgeTracker] Migrated legacy GreyProfile for {member.firstName} to use GreyingGene.");
                 }
                 return existing;
             }
 
-            // Generate new profile
             Color currentHair = Color.black;
             try { currentHair = Traverse.Create(member).Field("m_hairColor").GetValue<Color>(); } catch {}
-            // If checking fails, default to black/grey
             if (currentHair == default(Color)) currentHair = Color.black; 
 
             var profile = new GreyProfile();
             profile.OriginalColor = new float[] { currentHair.r, currentHair.g, currentHair.b, currentHair.a };
-            
-            // Generate Gene
             profile.Gene = GreyingGene.GenerateRandom(_random);
 
             _currentAgeData.greyProfiles[id] = profile;
-            if (Log.IsDebugEnabled) Log.Debug($"[AgeTracker] Generated Grey Profile for {member.firstName}. Start: {profile.Gene.StartAge}y, Duration: {profile.Gene.DurationYears}y, Coverage: {profile.Gene.MaxCoverage:P0}.");
-
             return profile;
         }
 
         /// <summary>
-        /// Gets or generates the development gene for a member.
-        /// Determines stat growth potential.
+        /// Returns the character's development gene, governing stat growth.
         /// </summary>
         public DevelopmentGene GetOrGenerateDevelopmentGene(FamilyMember member)
         {
@@ -640,15 +680,14 @@ namespace Lifespan
                 return _currentAgeData.developmentGenes[id];
             }
 
-            // Generate new gene
             var gene = DevelopmentGene.GenerateRandom(_random);
-            
             _currentAgeData.developmentGenes[id] = gene;
-            if (Log.IsDebugEnabled) Log.Debug($"[AgeTracker] Generated Dev Gene for {member.firstName}. Potentials: Pre-A: {gene.PreAdultPotential}, Post-A: {gene.PostAdultPotential}, Pre-E: {gene.PreElderPotential}, Post-E: {gene.PostElderPotential}.");
-
             return gene;
         }
 
+        /// <summary>
+        /// Logs a character's death for record-keeping and obituary persistence.
+        /// </summary>
         public void RecordDeath(FamilyMember member, int backdatedDay)
         {
             if (member == null) return;
@@ -657,9 +696,12 @@ namespace Lifespan
             
             _currentAgeData.deceasedDeathDays[id] = backdatedDay;
             _currentAgeData.deceasedDeathAges[id] = ageWeeks;
-            _log.Info($"[Lifespan] Recorded death for {member.firstName}. Day: {backdatedDay}, Age: {ageWeeks / 52}y.");
+            _log.Info($"[Lifespan] Recorded death for {member.firstName}. Day: {backdatedDay}, Age: {ageWeeks / LifespanConstants.WeeksPerYear}y.");
         }
 
+        /// <summary>
+        /// Retrieves historical death details.
+        /// </summary>
         public bool TryGetDeathInfo(int id, out int day, out int ageWeeks)
         {
             day = 0;
@@ -669,6 +711,9 @@ namespace Lifespan
             return foundDay || foundAge;
         }
 
+        /// <summary>
+        /// Returns the day of the most recent death in the shelter.
+        /// </summary>
         public int GetMaxDeathDay()
         {
             if (_currentAgeData.deceasedDeathDays.Count == 0) return 0;
@@ -679,19 +724,38 @@ namespace Lifespan
             }
             return max;
         }
+
+        /// <summary>
+        /// Persistence Bridge: Returns the persistent milestone map.
+        /// </summary>
+        public Dictionary<int, HashSet<string>> GetTriggeredMilestones() => _currentAgeData.triggeredMilestones;
+        
+        /// <summary>
+        /// Persistence Bridge: Returns the persistent birthday tracking map.
+        /// </summary>
+        public Dictionary<int, int> GetLastBirthdayYears() => _currentAgeData.lastBirthdayYear;
+        
+        /// <summary>
+        /// Persistence Bridge: Returns the persistent dialogue history 'bag'.
+        /// </summary>
+        public Dictionary<string, HashSet<int>> GetDialogueHistory() => _currentAgeData.dialogueHistory;
     }
 
+    /// <summary>
+    /// Runtime model for age tracking. Converted to/from AgeDataSerializable for storage.
+    /// </summary>
     [Serializable]
     public class AgeData
     {
         public Dictionary<int, int> familyMemberAges = new Dictionary<int, int>();
-        // Stores age for NPCs across sessions
         public Dictionary<int, int> externalCharacterAges = new Dictionary<int, int>();
         public Dictionary<int, List<string>> elderIllnesses = new Dictionary<int, List<string>>();
         public Dictionary<int, GreyProfile> greyProfiles = new Dictionary<int, GreyProfile>();
         public Dictionary<int, DevelopmentGene> developmentGenes = new Dictionary<int, DevelopmentGene>();
-        // Key: Member ID, Value: Map of IllnessID -> Week it should upgrade/trigger next stage
         public Dictionary<int, Dictionary<string, int>> onsetTiming = new Dictionary<int, Dictionary<string, int>>();
+        public Dictionary<int, HashSet<string>> triggeredMilestones = new Dictionary<int, HashSet<string>>();
+        public Dictionary<int, int> lastBirthdayYear = new Dictionary<int, int>();
+        public Dictionary<string, HashSet<int>> dialogueHistory = new Dictionary<string, HashSet<int>>();
 
         public Dictionary<int, int> deceasedDeathDays = new Dictionary<int, int>();
         public Dictionary<int, int> deceasedDeathAges = new Dictionary<int, int>();
@@ -699,99 +763,47 @@ namespace Lifespan
         public AgeDataSerializable ToSerializable()
         {
             var s = new AgeDataSerializable();
-            if (familyMemberAges != null)
-            {
-                foreach (var kvp in familyMemberAges)
-                    s.ages.Add(new AgeEntry { id = kvp.Key, weeks = kvp.Value });
-            }
-            if (externalCharacterAges != null)
-            {
-                foreach (var kvp in externalCharacterAges)
-                    s.externalAges.Add(new AgeEntry { id = kvp.Key, weeks = kvp.Value });
-            }
-            if (elderIllnesses != null)
-            {
-                foreach (var kvp in elderIllnesses)
-                    s.illnesses.Add(new IllnessEntry { id = kvp.Key, illnessIds = kvp.Value });
-            }
-            if (greyProfiles != null)
-            {
-                foreach (var kvp in greyProfiles)
-                    s.greyProfiles.Add(new GreyProfileEntry { id = kvp.Key, profile = kvp.Value });
-            }
-            if (developmentGenes != null)
-            {
-                foreach (var kvp in developmentGenes)
-                    s.developmentGenes.Add(new DevelopmentGeneEntry { id = kvp.Key, gene = kvp.Value });
-            }
-            if (onsetTiming != null)
-            {
-                foreach (var kvp in onsetTiming)
-                    s.onsetData.Add(new OnsetEntry { id = kvp.Key, onsetWeeks = kvp.Value });
-            }
-            if (deceasedDeathDays != null)
-            {
-                foreach (var kvp in deceasedDeathDays)
-                    s.deathDays.Add(new AgeEntry { id = kvp.Key, weeks = kvp.Value });
-            }
-            if (deceasedDeathAges != null)
-            {
-                foreach (var kvp in deceasedDeathAges)
-                    s.deathAges.Add(new AgeEntry { id = kvp.Key, weeks = kvp.Value });
-            }
+            foreach (var kvp in familyMemberAges) s.ages.Add(new AgeEntry { id = kvp.Key, weeks = kvp.Value });
+            foreach (var kvp in externalCharacterAges) s.externalAges.Add(new AgeEntry { id = kvp.Key, weeks = kvp.Value });
+            foreach (var kvp in elderIllnesses) s.illnesses.Add(new IllnessEntry { id = kvp.Key, illnessIds = kvp.Value });
+            foreach (var kvp in greyProfiles) s.greyProfiles.Add(new GreyProfileEntry { id = kvp.Key, profile = kvp.Value });
+            foreach (var kvp in developmentGenes) s.developmentGenes.Add(new DevelopmentGeneEntry { id = kvp.Key, gene = kvp.Value });
+            foreach (var kvp in onsetTiming) s.onsetData.Add(new OnsetEntry { id = kvp.Key, onsetWeeks = kvp.Value });
+            foreach (var kvp in deceasedDeathDays) s.deathDays.Add(new AgeEntry { id = kvp.Key, weeks = kvp.Value });
+            foreach (var kvp in deceasedDeathAges) s.deathAges.Add(new AgeEntry { id = kvp.Key, weeks = kvp.Value });
+            
+            foreach (var kvp in triggeredMilestones) s.triggeredMilestones.Add(new MilestoneEntry { id = kvp.Key, keys = new List<string>(kvp.Value) });
+            foreach (var kvp in lastBirthdayYear) s.lastBirthdays.Add(new BirthdayEntry { id = kvp.Key, year = kvp.Value });
+            foreach (var kvp in dialogueHistory) s.dialogueHistory.Add(new DialogueHistoryEntry { key = kvp.Key, hashes = new List<int>(kvp.Value) });
+            
             return s;
         }
 
         public static AgeData FromSerializable(AgeDataSerializable s)
         {
             var data = new AgeData();
-            if (s != null)
-            {
-                if (s.ages != null)
-                {
-                    foreach (var entry in s.ages)
-                        data.familyMemberAges[entry.id] = entry.weeks;
-                }
-                if (s.externalAges != null)
-                {
-                    foreach (var entry in s.externalAges)
-                        data.externalCharacterAges[entry.id] = entry.weeks;
-                }
-                if (s.illnesses != null)
-                {
-                    foreach (var entry in s.illnesses)
-                        data.elderIllnesses[entry.id] = entry.illnessIds;
-                }
-                if (s.greyProfiles != null)
-                {
-                    foreach (var entry in s.greyProfiles)
-                        data.greyProfiles[entry.id] = entry.profile;
-                }
-                if (s.developmentGenes != null)
-                {
-                    foreach (var entry in s.developmentGenes)
-                        data.developmentGenes[entry.id] = entry.gene;
-                }
-                if (s.onsetData != null)
-                {
-                    foreach (var entry in s.onsetData)
-                        data.onsetTiming[entry.id] = entry.onsetWeeks;
-                }
-                if (s.deathDays != null)
-                {
-                    foreach (var entry in s.deathDays)
-                        data.deceasedDeathDays[entry.id] = entry.weeks;
-                }
-                if (s.deathAges != null)
-                {
-                    foreach (var entry in s.deathAges)
-                        data.deceasedDeathAges[entry.id] = entry.weeks;
-                }
-            }
+            if (s == null) return data;
+            foreach (var entry in s.ages) data.familyMemberAges[entry.id] = entry.weeks;
+            foreach (var entry in s.externalAges) data.externalCharacterAges[entry.id] = entry.weeks;
+            foreach (var entry in s.illnesses) data.elderIllnesses[entry.id] = entry.illnessIds;
+            foreach (var entry in s.greyProfiles) data.greyProfiles[entry.id] = entry.profile;
+            foreach (var entry in s.developmentGenes) data.developmentGenes[entry.id] = entry.gene;
+            foreach (var entry in s.onsetData) data.onsetTiming[entry.id] = entry.onsetWeeks;
+            foreach (var entry in s.deathDays) data.deceasedDeathDays[entry.id] = entry.weeks;
+            foreach (var entry in s.deathAges) data.deceasedDeathAges[entry.id] = entry.weeks;
+            
+            if (s.triggeredMilestones != null) foreach (var entry in s.triggeredMilestones) data.triggeredMilestones[entry.id] = new HashSet<string>(entry.keys);
+            if (s.lastBirthdays != null) foreach (var entry in s.lastBirthdays) data.lastBirthdayYear[entry.id] = entry.year;
+            if (s.dialogueHistory != null) foreach (var entry in s.dialogueHistory) data.dialogueHistory[entry.key] = new HashSet<int>(entry.hashes);
+            
             return data;
         }
     }
 
+    /// <summary>
+    /// Pure data transfer object (DTO) for Serialization. 
+    /// Keeps data flat and type-safe for the Save System.
+    /// </summary>
     [Serializable]
     public class AgeDataSerializable
     {
@@ -803,43 +815,17 @@ namespace Lifespan
         public List<OnsetEntry> onsetData = new List<OnsetEntry>();
         public List<AgeEntry> deathDays = new List<AgeEntry>();
         public List<AgeEntry> deathAges = new List<AgeEntry>();
+        public List<MilestoneEntry> triggeredMilestones = new List<MilestoneEntry>();
+        public List<BirthdayEntry> lastBirthdays = new List<BirthdayEntry>();
+        public List<DialogueHistoryEntry> dialogueHistory = new List<DialogueHistoryEntry>();
     }
 
-    [Serializable]
-    public class AgeEntry
-    {
-        public int id;
-        public int weeks;
-    }
-
-    [Serializable]
-    public class IllnessEntry
-    {
-        public int id;
-        public List<string> illnessIds = new List<string>();
-    }
-
-    [Serializable]
-    public class GreyProfile
-    {
-        public float[] OriginalColor;
-        public GreyingGene Gene;
-        // Legacy fields maintained for deserialization safety, though unused
-        public int StartAgeWeeks; 
-        public int DurationWeeks;
-    }
-
-    [Serializable]
-    public class GreyProfileEntry
-    {
-        public int id;
-        public GreyProfile profile;
-    }
-
-    [Serializable]
-    public class OnsetEntry
-    {
-        public int id;
-        public Dictionary<string, int> onsetWeeks = new Dictionary<string, int>();
-    }
+    [Serializable] public class MilestoneEntry { public int id; public List<string> keys = new List<string>(); }
+    [Serializable] public class BirthdayEntry { public int id; public int year; }
+    [Serializable] public class DialogueHistoryEntry { public string key; public List<int> hashes = new List<int>(); }
+    [Serializable] public class AgeEntry { public int id; public int weeks; }
+    [Serializable] public class IllnessEntry { public int id; public List<string> illnessIds = new List<string>(); }
+    [Serializable] public class GreyProfile { public float[] OriginalColor; public GreyingGene Gene; public int StartAgeWeeks; public int DurationWeeks; }
+    [Serializable] public class GreyProfileEntry { public int id; public GreyProfile profile; }
+    [Serializable] public class OnsetEntry { public int id; public Dictionary<string, int> onsetWeeks = new Dictionary<string, int>(); }
 }

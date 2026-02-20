@@ -52,7 +52,17 @@ namespace Lifespan
 
                     // Refresh the visual elements (labels, health bars, etc.)
                     if (__instance.gameObject.activeInHierarchy)
-                        Traverse.Create(__instance).Method("UpdateUI").GetValue();
+                    {
+                        try
+                        {
+                            Traverse.Create(__instance).Method("UpdateUI").GetValue();
+                        }
+                        catch (Exception ex)
+                        {
+                            LifespanPlugin.Instance.Log.Warn($"PartyMapPanel UpdateUI failed: {ex.Message}");
+                            // Continue anyway - UI still renders, just not refreshed
+                        }
+                    }
                 }
                 catch (Exception ex)
                 {

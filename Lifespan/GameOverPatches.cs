@@ -116,7 +116,7 @@ namespace Lifespan
                         // 4. Append Age
                         if (ageWeeks > 0)
                         {
-                            int years = ageWeeks / 52;
+                            int years = ageWeeks / LifespanConstants.WeeksPerYear;
                             dateText += $" (Age: {years})";
                         }
 

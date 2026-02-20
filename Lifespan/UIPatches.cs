@@ -95,7 +95,7 @@ namespace Lifespan
                 }
 
                 int ageWeeks = AgingPatches.Tracker.GetAgeWeeks(member);
-                int ageYears = ageWeeks / 52;
+                int ageYears = ageWeeks / LifespanConstants.WeeksPerYear;
                 if (LifespanPlugin.Instance.Log.IsDebugEnabled) LifespanPlugin.Instance.Log.Debug($"[UIPatch] Calculated age for {member.firstName}: {ageYears} years ({ageWeeks} weeks).");
 
                 string currentText = nameLabel.text;

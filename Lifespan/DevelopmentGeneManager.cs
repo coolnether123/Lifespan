@@ -1,4 +1,4 @@
-using ModAPI.Core;
+using ModAPI.Core; // test
 using ModAPI.Reflection;
 using System;
 using System.Collections.Generic;
@@ -112,7 +112,7 @@ namespace Lifespan
             var gene = GetOrGenerateGene(member);
             if (gene == null) return;
 
-            int currentAgeYears = currentAgeWeeks / 52;
+            int currentAgeYears = currentAgeWeeks / LifespanConstants.WeeksPerYear;
             LifeStage stage = DetermineLifeStage(currentAgeYears);
 
             Log.Debug($"Processing {member.firstName} (Age {currentAgeYears}y, Stage: {stage}, Interval: {weeksAgedThisInterval}w)");
@@ -225,7 +225,7 @@ namespace Lifespan
             if (sparkTriggered) ShowSparkMessage(member, statType);
             
             // Milestone check
-            _milestoneManager?.ReportFirstSkill(member);
+            _milestoneManager?.ReportSkillGain(member, statType);
         }
 
         /// <summary>
@@ -285,10 +285,13 @@ namespace Lifespan
             float chaW = gene.CharismaWeight;
             float perW = gene.PerceptionWeight;
 
+            // Apply a 25% bias to the first evaluated stat (Strength) per user request
+            strW *= 1.25f;
+
             // Apply skill fatigue: significantly reduces the chance of gaining the same stat twice in a row.
             if (gene.HasLastGainedStat)
             {
-                float fatigueFactor = 0.3f; 
+                float fatigueFactor = 0.3f; // 70% reduction for the last seen stat
                 switch (gene.LastGainedStat)
                 {
                     case BaseStats.StatType.Strength: strW *= fatigueFactor; break;

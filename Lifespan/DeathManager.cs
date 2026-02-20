@@ -17,7 +17,6 @@ namespace Lifespan
         private readonly ModRandomStream _random;
         private DialogueScheduler _scheduler;
 
-        private const int MAX_AGE_DEATH_REASON_THRESHOLD_WEEKS = 104;
         private const int SCHEDULE_DEATH_RANDOM_OFFSET_DAYS = 7;
         private const float FATAL_DAMAGE_AMOUNT = 999f;
         private IModLogger Log => _log;
@@ -125,17 +124,17 @@ namespace Lifespan
             }
         }
 
-        public void ProcessDeathRoll(FamilyMember member, int ageWeeks)
+        public void ProcessDeathRoll(FamilyMember member, int ageWeeks, int elapsedBiologicalWeeks = 1)
         {
             if (member == null || member.isDead || IsDeathPending(member)) return;
 
-            if (Log.IsDebugEnabled) Log.Debug($"Processing death roll for {member.firstName} ({ageWeeks/52}y).");
+            if (Log.IsDebugEnabled) Log.Debug($"Processing death roll for {member.firstName} ({ageWeeks/LifespanConstants.WeeksPerYear}y).");
 
             // 1. Probability of death increases with age past elder threshold
-            int elderWeeks = _config.elderAgeYears * 52;
+            int elderWeeks = _config.elderAgeYears * LifespanConstants.WeeksPerYear;
             if (ageWeeks >= elderWeeks)
             {
-                float yearsPastElder = (float)(ageWeeks - elderWeeks) / 52f;
+                float yearsPastElder = (float)(ageWeeks - elderWeeks) / (float)LifespanConstants.WeeksPerYear;
                 // Config is now Percentage (0-100), convert to 0-1
                 float baseProb = (_config.deathBaseProbability / 100f) + (yearsPastElder * (_config.deathProbabilityIncreasePerYear / 100f));
                 
@@ -143,17 +142,25 @@ namespace Lifespan
                 // Non-linear HP impact: health increases chance MORE the lower the HP
                 float healthImpact = 1.0f + (healthFactor * healthFactor * _config.healthImpactFactor);
                 
-                float finalProb = baseProb * healthImpact * _config.deathProbabilityMultiplier;
+                float weeklyProb = baseProb * healthImpact * _config.deathProbabilityMultiplier;
+                weeklyProb = Mathf.Clamp01(weeklyProb);
+
+                // Convert per-week probability into a multi-week tick probability.
+                int rolledWeeks = Math.Max(1, elapsedBiologicalWeeks);
+                float finalProb = (rolledWeeks <= 1)
+                    ? weeklyProb
+                    : 1f - (float)Math.Pow(1f - weeklyProb, rolledWeeks);
+                finalProb = Mathf.Clamp01(finalProb);
 
                 float roll = _random.Value();
-                if (Log.IsDebugEnabled) Log.Debug($"Death Roll for {member.firstName}: {roll:F5} VS Prob: {finalProb:F5} (Base: {baseProb:F4}, HP Impact: {healthImpact:F2}, Mult: {_config.deathProbabilityMultiplier}).");
+                if (Log.IsDebugEnabled) Log.Debug($"Death Roll for {member.firstName}: {roll:F5} VS Prob: {finalProb:F5} (Weekly: {weeklyProb:F5}, Weeks: {rolledWeeks}, Base: {baseProb:F4}, HP Impact: {healthImpact:F2}, Mult: {_config.deathProbabilityMultiplier}).");
 
                 if (roll < finalProb)
                 {
                     if (Log.IsDebugEnabled) Log.Debug($"Death Roll SUCCESS for {member.firstName}.");
                     
                     // Logic: Use "Old age" if very old (80+), otherwise "Natural causes"
-                    string reason = (ageWeeks >= 80 * 52) ? "Old age" : "Natural causes";
+                    string reason = (ageWeeks >= 80 * LifespanConstants.WeeksPerYear) ? "Old age" : "Natural causes";
                     
                     // Brief delay 0-6 days to spread out mass deaths
                     int dayOffset = _random.Range(0, SCHEDULE_DEATH_RANDOM_OFFSET_DAYS); 
@@ -162,7 +169,7 @@ namespace Lifespan
             }
             else
             {
-                if (Log.IsDebugEnabled) Log.Debug($"{member.firstName} is below elder age threshold ({ageWeeks/52}y < {_config.elderAgeYears}y).");
+                if (Log.IsDebugEnabled) Log.Debug($"{member.firstName} is below elder age threshold ({ageWeeks/LifespanConstants.WeeksPerYear}y < {_config.elderAgeYears}y).");
             }
         }
 
@@ -291,7 +298,7 @@ namespace Lifespan
             if (member.isDead)
             {
                 if (Log.IsDebugEnabled) Log.Debug("Inserting death journal entry.");
-                TriggerJournal($"{member.firstName} has passed away of old age. They will be missed.", DialogueScheduler.Priority.Reactive);
+                TriggerJournal($"{member.firstName} has passed away due to {reason}. They will be missed.", DialogueScheduler.Priority.Reactive);
             }
         }
 

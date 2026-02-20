@@ -50,7 +50,7 @@ namespace Lifespan
                 }
                 else
                 {
-                     if (Vector3.Distance(character.transform.position, _child.transform.position) > 2.0f)
+                    if (Vector3.Distance(character.transform.position, _child.transform.position) > LifespanConstants.UpdateTargetDistance)
                     {
                         this.location = _child.transform.position;
                         character.WalkToPosition(this.location);
@@ -63,9 +63,7 @@ namespace Lifespan
                 {
                     _child.stats.toilet.Set(0f); // Reset toilet need
                     
-                    // Also small hygiene penalty for caregiver? Nah.
-                    // Maybe hygiene penalty for child is cleared too? Usually diaper change implies cleaning.
-                    // Let's clear hygiene too to be nice.
+                    // Clear dirtiness/hygiene too since diaper change implies cleaning
                     if (_child.stats.dirtiness != null) _child.stats.dirtiness.Modify(-20f);
                 }
                 
@@ -92,7 +90,7 @@ namespace Lifespan
 
         private bool HasArrived(Vector3 target)
         {
-            return Vector3.Distance(character.transform.position, target) < 1.0f;
+            return Vector3.Distance(character.transform.position, target) < LifespanConstants.ArrivalDistance;
         }
     }
 }

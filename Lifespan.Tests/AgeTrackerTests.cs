@@ -61,5 +61,23 @@ namespace Lifespan.Tests
             Assert.AreEqual(initialAge + increment, newAge);
             Assert.AreEqual(newAge, _tracker.GetAgeWeeks(member));
         }
+
+        [Test]
+        public void IncrementAge_UsesFixedChildCutoffAtTenYears()
+        {
+            var member = (FamilyMember)System.Runtime.Serialization.FormatterServices.GetUninitializedObject(typeof(FamilyMember));
+            int memberId = 124;
+            typeof(FamilyMember).GetField("familyId", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance).SetValue(member, memberId);
+
+            // Age 9 -> accelerated (+2 years per 1-year tick)
+            _tracker.SetAgeWeeks(member, 9 * 52);
+            int nineYearResult = _tracker.IncrementAge(member, 52);
+            Assert.AreEqual((9 * 52) + 104, nineYearResult);
+
+            // Age 10 -> normal speed (+1 year per 1-year tick)
+            _tracker.SetAgeWeeks(member, 10 * 52);
+            int tenYearResult = _tracker.IncrementAge(member, 52);
+            Assert.AreEqual((10 * 52) + 52, tenYearResult);
+        }
     }
 }

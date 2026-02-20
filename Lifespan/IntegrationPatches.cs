@@ -59,7 +59,7 @@ namespace Lifespan
                     int age = LifespanPlugin.Instance.Api.GenerateAgeForNPC(__result, context);
                     
                     if (LifespanPlugin.Instance.Log.IsDebugEnabled)
-                        LifespanPlugin.Instance.Log.Info($"Generated age for {type} {__result.firstName}: {age / 52} years ({context})");
+                        LifespanPlugin.Instance.Log.Info($"Generated age for {type} {__result.firstName}: {age / LifespanConstants.WeeksPerYear} years ({context})");
                 }
                 catch (Exception ex)
                 {
@@ -104,7 +104,7 @@ namespace Lifespan
                                         if (__state > 0)
                                         {
                                             LifespanPlugin.Instance.Api.SetCharacterAgeWeeks(newMember, __state);
-                                            LifespanPlugin.Instance.Log.Info($"Transferred age {__state / 52}y from NPC to new FamilyMember {newMember.firstName}.");
+                                            LifespanPlugin.Instance.Log.Info($"Transferred age {__state / LifespanConstants.WeeksPerYear}y from NPC to new FamilyMember {newMember.firstName}.");
                                         }
                                         else
                                         {

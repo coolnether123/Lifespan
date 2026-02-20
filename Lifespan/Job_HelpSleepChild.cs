@@ -50,7 +50,7 @@ namespace Lifespan
                 }
                 else
                 {
-                     if (Vector3.Distance(character.transform.position, _child.transform.position) > 2.0f)
+                    if (Vector3.Distance(character.transform.position, _child.transform.position) > LifespanConstants.UpdateTargetDistance)
                     {
                         this.location = _child.transform.position;
                         character.WalkToPosition(this.location);
@@ -88,7 +88,7 @@ namespace Lifespan
 
         private bool HasArrived(Vector3 target)
         {
-            return Vector3.Distance(character.transform.position, target) < 1.0f;
+            return Vector3.Distance(character.transform.position, target) < LifespanConstants.ArrivalDistance;
         }
     }
 }

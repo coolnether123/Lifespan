@@ -9,15 +9,17 @@ namespace Lifespan
     {
         private readonly IPluginContext _ctx;
         private readonly ChildDevelopmentManager _devManager;
+        private readonly AgeTracker _ageTracker;
         private readonly DialogueScheduler _dialogue;
         private float _timer;
         private const float CHECK_INTERVAL = 2.0f; // Seconds
         private readonly Dictionary<int, float> _lastDialogueTime = new Dictionary<int, float>();
 
-        public NurseJobGiver(IPluginContext ctx, ChildDevelopmentManager devManager, DialogueScheduler dialogue)
+        public NurseJobGiver(IPluginContext ctx, ChildDevelopmentManager devManager, AgeTracker ageTracker, DialogueScheduler dialogue)
         {
             _ctx = ctx;
             _devManager = devManager;
+            _ageTracker = ageTracker;
             _dialogue = dialogue;
         }
 
@@ -49,7 +51,10 @@ namespace Lifespan
                     if (hunger >= 40f) // Threshold to start caring
                     {
                         // Handle Dialogue / "Baby Talk"
-                        ProcessBabyDialogue(child, hunger);
+                        if (IsBabyTalkAge(child))
+                        {
+                            ProcessBabyDialogue(child, hunger);
+                        }
 
                         // Check if already being fed
                         if (IsBeingFed(child)) continue;
@@ -85,6 +90,14 @@ namespace Lifespan
                 _dialogue.Enqueue(child, text, false, DialogueScheduler.Priority.Reactive);
                 _lastDialogueTime[id] = now;
             }
+        }
+
+        private bool IsBabyTalkAge(FamilyMember child)
+        {
+            if (child == null || _ageTracker == null) return false;
+
+            int ageYears = _ageTracker.GetAgeYears(child);
+            return ageYears >= 0 && ageYears <= 2;
         }
 
         private bool IsBeingFed(FamilyMember child)

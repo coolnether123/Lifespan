@@ -27,8 +27,10 @@ namespace Lifespan
         private Harmony _harmony;
         private DebugManager _debugManager;
         private DialogueScheduler _dialogueScheduler;
+        private DialogueHelper _dialogueHelper;
         private ChildDevelopmentManager _childDevManager;
         private NurseJobGiver _nurseJobGiver;
+        private ExpeditionDialogueManager _expeditionDialogueManager;
 
         public ILifespanAPI Api => _api;
         
@@ -47,6 +49,10 @@ namespace Lifespan
         private List<HairTransitionContext> _activeTransitions = new List<HairTransitionContext>();
         private Dictionary<int, CharacterMesh> _meshCache = new Dictionary<int, CharacterMesh>();
 
+        /// <summary>
+        /// Resets all internal buffers and manager states.
+        /// Called during initialization and upon game reloading to ensure a clean slate.
+        /// </summary>
         public void ResetAllState()
         {
             if (Log.IsDebugEnabled) Log.Debug("Resetting all mod state for fresh session.");
@@ -55,33 +61,46 @@ namespace Lifespan
             _meshCache?.Clear();
             TooltipCache.Clear();
             _dialogueScheduler?.Clear();
+            _dialogueHelper?.ClearHistory();
+            _milestoneManager?.Reset();
             _deathManager?.Reset();
+            _expeditionDialogueManager?.Reset();
         }
 
+        /// <summary>
+        /// ModAPI v1.2 Entry Point. Initializes all singleton managers and 
+        /// registers the data structures for the save system.
+        /// </summary>
         public override void Initialize(IPluginContext ctx)
         {
             try
             {
-                base.Initialize(ctx); // REQUIRED for v1.2 attribute binding
+                base.Initialize(ctx); // REQUIRED for v1.2 attribute binding and config loading
                 Instance = this;
                 
+                // 1. Initialize core utilities
                 _dialogueScheduler = new DialogueScheduler(Log);
+                _dialogueHelper = new DialogueHelper(this.Random);
                 
-                // Use local 'ctx' to ensure we don't hit property null refs
+                // 2. Initialize primary data tracker (AgeTracker)
                 _ageTracker = new AgeTracker(ctx, Config, this.Random);
+                _dialogueHelper.SetAgeTracker(_ageTracker);
+                
+                // 3. Initialize domain-specific managers
                 _childManager = new ChildTransitionManager(ctx, Config, _ageTracker, this.Random);
-                _illnessManager = new ElderIllnessManager(ctx, Config, _ageTracker, this.Random);
-                _milestoneManager = new MilestoneManager(ctx, Config, _ageTracker, this.Random); 
+                _illnessManager = new ElderIllnessManager(ctx, Config, _ageTracker, this.Random, _dialogueHelper);
+                _milestoneManager = new MilestoneManager(ctx, Config, _ageTracker, this.Random, _dialogueHelper); 
                 _deathManager = new DeathManager(ctx, Config, _ageTracker, this.Random);
                 _devGeneManager = new DevelopmentGeneManager(ctx, Config, _ageTracker, this.Random);
                 
                 _childDevManager = new ChildDevelopmentManager(ctx, Config, _ageTracker);
-                _nurseJobGiver = new NurseJobGiver(ctx, _childDevManager, _dialogueScheduler);
+                _nurseJobGiver = new NurseJobGiver(ctx, _childDevManager, _ageTracker, _dialogueScheduler);
+                _expeditionDialogueManager = new ExpeditionDialogueManager(ctx, Config, _ageTracker, _illnessManager, _dialogueScheduler, _dialogueHelper, this.Random);
                 
                 _debugManager = new DebugManager(Log, Config);
 
                 ResetAllState();
-                Log.Debug("Initialize() complete.");
+                if (Log.IsDebugEnabled) Log.Debug("Initialize() complete.");
             }
             catch (Exception ex)
             {
@@ -94,7 +113,7 @@ namespace Lifespan
 
         public void Start(IPluginContext ctx)
         {
-            Log.Debug("Start() called.");
+            if (Log.IsDebugEnabled) Log.Debug("Start() called.");
 
             // 2. Wire managers
             _illnessManager.SetDeathManager(_deathManager);
@@ -105,12 +124,12 @@ namespace Lifespan
             _devGeneManager.SetMilestoneManager(_milestoneManager);
 
             // 3. Register API
-            Log.Debug("Registering ILifespanAPI...");
+            if (Log.IsDebugEnabled) Log.Debug("Registering ILifespanAPI...");
             _api = new LifespanAPIImpl(Context, Config, _ageTracker, _illnessManager, _devGeneManager, _childDevManager);
             ModAPIRegistry.RegisterAPI<ILifespanAPI>("com.lifespan.api", _api, Context.Mod.Id);
 
             // 4. Initialize Harmony Patches
-            Log.Debug("Applying Harmony patches...");
+            if (Log.IsDebugEnabled) Log.Debug("Applying Harmony patches...");
             _harmony = new Harmony("com.lifespan.patches");
             AgingPatches.Tracker = _ageTracker;
             AgingPatches.IllnessManager = _illnessManager;
@@ -131,7 +150,7 @@ namespace Lifespan
             // Initialize Child Capability Patches
             if (Config.enableChildDevelopment)
             {
-                Log.Debug("Initializing Child Capability Patches...");
+                if (Log.IsDebugEnabled) Log.Debug("Initializing Child Capability Patches...");
                 ChildCapabilityPatches.Initialize(Context, _childDevManager);
             }
         
@@ -139,7 +158,7 @@ namespace Lifespan
             ApplyManualPatches();
         
             // 5. Subscribe to game events via ModAPI
-            Log.Debug("Subscribing to GameEvents...");
+            if (Log.IsDebugEnabled) Log.Debug("Subscribing to GameEvents...");
             ModAPI.Events.GameEvents.OnAfterLoad += OnGameLoad;
             ModAPI.Events.GameEvents.OnBeforeSave += OnGameSave;
             
@@ -148,51 +167,74 @@ namespace Lifespan
 
         private void ApplyManualPatches()
         {
+            int patchCount = 0;
+            int attemptedCount = 0;
+
             var tooltipPostfix = new HarmonyMethod(typeof(UI_CharacterTooltip_UpdateValues_Patch).GetMethod("Postfix")) { priority = Priority.LowerThanNormal };
-            PatchManually(typeof(UI_CharacterTooltip), "UpdateValues", postfix: tooltipPostfix);
+            attemptedCount++;
+            if (PatchManually(typeof(UI_CharacterTooltip), "UpdateValues", postfix: tooltipPostfix)) patchCount++;
 
             var tooltipHidePostfix = new HarmonyMethod(typeof(UI_CharacterTooltip_HideTooltip_Patch).GetMethod("Postfix"));
-            PatchManually(typeof(UI_CharacterTooltip), "HideTooltip", postfix: tooltipHidePostfix, parameters: new[] { typeof(bool) });
+            attemptedCount++;
+            if (PatchManually(typeof(UI_CharacterTooltip), "HideTooltip", postfix: tooltipHidePostfix, parameters: new[] { typeof(bool) })) patchCount++;
 
             var saveLoadPostfix = new HarmonyMethod(typeof(AgingPatches.BaseCharacter_SaveLoadCharacter_Patch).GetMethod("Postfix"));
-            PatchManually(typeof(BaseCharacter), "SaveLoadCharacter", postfix: saveLoadPostfix, parameters: new[] { typeof(SaveData) });
+            attemptedCount++;
+            if (PatchManually(typeof(BaseCharacter), "SaveLoadCharacter", postfix: saveLoadPostfix, parameters: new[] { typeof(SaveData) })) patchCount++;
 
             var onTraitsChangedPostfix = new HarmonyMethod(typeof(AgingPatches.BaseCharacter_OnTraitsChanged_Patch).GetMethod("Postfix"));
-            PatchManually(typeof(BaseCharacter), "OnTraitsChanged", postfix: onTraitsChangedPostfix);
+            attemptedCount++;
+            if (PatchManually(typeof(BaseCharacter), "OnTraitsChanged", postfix: onTraitsChangedPostfix)) patchCount++;
 
             var onFatalDamagePrefix = new HarmonyMethod(typeof(AgingPatches.FamilyMember_OnFatalDamageTaken_Patch).GetMethod("Prefix"));
-            PatchManually(typeof(BaseCharacter), "OnFatalDamageTaken", prefix: onFatalDamagePrefix);
+            attemptedCount++;
+            if (PatchManually(typeof(BaseCharacter), "OnFatalDamageTaken", prefix: onFatalDamagePrefix)) patchCount++;
 
             var obituaryPostfix = new HarmonyMethod(typeof(GameOverPatches.FamilyManager_CreateObituaryInfo_Patch).GetMethod("Postfix"));
-            PatchManually(typeof(FamilyManager), "CreateObituaryInfo", postfix: obituaryPostfix, parameters: new[] { typeof(BaseCharacter) });
+            attemptedCount++;
+            if (PatchManually(typeof(FamilyManager), "CreateObituaryInfo", postfix: obituaryPostfix, parameters: new[] { typeof(BaseCharacter) })) patchCount++;
 
             var obituarySetupPostfix = new HarmonyMethod(typeof(GameOverPatches.ObituaryInfo_SetupObituary_Patch).GetMethod("Postfix"));
-            PatchManually(typeof(ObituaryInfo), "SetupObituary", postfix: obituarySetupPostfix, parameters: new[] { typeof(FamilyManager.DeadCharacterInfo) });
+            attemptedCount++;
+            if (PatchManually(typeof(ObituaryInfo), "SetupObituary", postfix: obituarySetupPostfix, parameters: new[] { typeof(FamilyManager.DeadCharacterInfo) })) patchCount++;
 
             var gameOverOnShowPostfix = new HarmonyMethod(typeof(GameOverPatches.GameOverPanel_OnShow_Patch).GetMethod("Postfix"));
-            PatchManually(typeof(GameOverPanel), "OnShow", postfix: gameOverOnShowPostfix);
+            attemptedCount++;
+            if (PatchManually(typeof(GameOverPanel), "OnShow", postfix: gameOverOnShowPostfix)) patchCount++;
 
             var partyMapOnShowPostfix = new HarmonyMethod(typeof(ExpeditionUIPatches.PartyMapPanel_OnShow_Patch).GetMethod("Postfix"));
-            PatchManually(typeof(PartyMapPanel), "OnShow", postfix: partyMapOnShowPostfix);
+            attemptedCount++;
+            if (PatchManually(typeof(PartyMapPanel), "OnShow", postfix: partyMapOnShowPostfix)) patchCount++;
 
             try 
             {
                 var createNpcPostfix = new HarmonyMethod(typeof(IntegrationPatches.NpcVisitManager_CreateNpcVisitor_Patch).GetMethod("Postfix"));
-                PatchManually(typeof(NpcVisitManager), "CreateNpcVisitor", postfix: createNpcPostfix, 
-                    parameters: new[] { typeof(NpcVisitor.NpcType), typeof(FamilySpawner.CharacterAttributes), typeof(Vector3) });
+                attemptedCount++;
+                if (PatchManually(typeof(NpcVisitManager), "CreateNpcVisitor", postfix: createNpcPostfix, 
+                    parameters: new[] { typeof(NpcVisitor.NpcType), typeof(FamilySpawner.CharacterAttributes), typeof(Vector3) })) patchCount++;
 
                 var adoptNpcPrefix = new HarmonyMethod(typeof(IntegrationPatches.FamilyManager_AdoptNpc_Patch).GetMethod("Prefix"));
                 var adoptNpcPostfix = new HarmonyMethod(typeof(IntegrationPatches.FamilyManager_AdoptNpc_Patch).GetMethod("Postfix"));
-                PatchManually(typeof(FamilyManager), "AdoptNpc", prefix: adoptNpcPrefix, postfix: adoptNpcPostfix, 
-                    parameters: new[] { typeof(NpcVisitor) });
+                attemptedCount++;
+                if (PatchManually(typeof(FamilyManager), "AdoptNpc", prefix: adoptNpcPrefix, postfix: adoptNpcPostfix, 
+                    parameters: new[] { typeof(NpcVisitor) })) patchCount++;
             }
             catch (Exception ex)
             {
                 Log.Error($"Error manually patching IntegrationPatches: {ex.Message}");
             }
+
+            if (patchCount == attemptedCount)
+            {
+                Log.Info($"Applied {patchCount} manual patches successfully.");
+            }
+            else
+            {
+                Log.Warn($"Applied {patchCount}/{attemptedCount} manual patches. Check warnings above.");
+            }
         }
 
-        private void PatchManually(Type type, string methodName, HarmonyMethod prefix = null, HarmonyMethod postfix = null, Type[] parameters = null)
+        private bool PatchManually(Type type, string methodName, HarmonyMethod prefix = null, HarmonyMethod postfix = null, Type[] parameters = null)
         {
             try
             {
@@ -207,16 +249,18 @@ namespace Lifespan
                 if (method != null)
                 {
                     _harmony.Patch(method, prefix, postfix);
-                    Log.Info($"Manually patched {type.Name}.{methodName}");
+                    return true;
                 }
                 else
                 {
                     Log.Warn($"Failed to find method for manual patch: {type.Name}.{methodName}");
+                    return false;
                 }
             }
             catch (Exception ex)
             {
                 Log.Error($"Exception during manual patch of {type.Name}.{methodName}: {ex}");
+                return false;
             }
         }
 
@@ -232,6 +276,8 @@ namespace Lifespan
             
             if (Config.enableChildDevelopment)
                 _nurseJobGiver?.Update();
+
+            _expeditionDialogueManager?.Update();
 
             UpdateHairTransitions();
         }
@@ -335,7 +381,7 @@ namespace Lifespan
                 return;
             }
 
-            Log.Debug($"Processing aging for members (+{Config.weeksAgedPerInterval} weeks).");
+            if (Log.IsDebugEnabled) Log.Debug($"Processing aging for members (+{Config.weeksAgedPerInterval} weeks).");
             
             var members = FamilyManager.Instance.GetAllFamilyMembers();
             if (members == null)
@@ -347,7 +393,7 @@ namespace Lifespan
             Log.Debug($"Found {members.Count} members to process.");
             foreach (var member in members)
             {
-                Log.Debug($"===== Processing member: {(member != null ? member.firstName : "NULL MEMBER")} =====");
+                if (Log.IsDebugEnabled) Log.Debug($"===== Processing member: {(member != null ? member.firstName : "NULL MEMBER")} =====");
                 if (member == null)
                 {
                     Log.Warn("Member in list is null. Skipping.");
@@ -373,30 +419,32 @@ namespace Lifespan
                     continue;
                 }
 
+                int previousAgeWeeks = _ageTracker.GetAgeWeeks(member);
                 int newAgeWeeks = _ageTracker.IncrementAge(member, Config.weeksAgedPerInterval);
+                int elapsedBiologicalWeeks = Math.Max(1, newAgeWeeks - previousAgeWeeks);
 
                 if (Log.IsDebugEnabled)
                 {
-                    Log.Info($"Incrementing age for '{member.firstName}' to {newAgeWeeks} weeks.");
+                    Log.Debug($"Incrementing age for '{member.firstName}' to {newAgeWeeks} weeks.");
                 }
  
-                if (Log.IsDebugEnabled) Log.Info($"Checking child transition for '{member.firstName}'. (IsChild: {member.isChild}, Age: {newAgeWeeks} weeks, Threshold: {Config.adultAgeYears * 52} weeks)");
-                int adultWeeks = Config.adultAgeYears * 52;
+                if (Log.IsDebugEnabled) Log.Debug($"Checking child transition for '{member.firstName}'. (IsChild: {member.isChild}, Age: {newAgeWeeks} weeks, Threshold: {Config.adultAgeYears * LifespanConstants.WeeksPerYear} weeks)");
+                int adultWeeks = Config.adultAgeYears * LifespanConstants.WeeksPerYear;
                 if (member.isChild && newAgeWeeks >= adultWeeks)
                 {
                     Log.Info($"{member.firstName} has reached adulthood.");
                     _childManager.TransitionToAdult(member);
                 }
 
-                if (Log.IsDebugEnabled) Log.Info($"Checking elder illness for '{member.firstName}'. (Age: {newAgeWeeks} weeks, Threshold: {Config.elderAgeYears * 52} weeks)");
-                int elderWeeks = Config.elderAgeYears * 52;
+                if (Log.IsDebugEnabled) Log.Debug($"Checking elder illness for '{member.firstName}'. (Age: {newAgeWeeks} weeks, Threshold: {Config.elderAgeYears * LifespanConstants.WeeksPerYear} weeks)");
+                int elderWeeks = Config.elderAgeYears * LifespanConstants.WeeksPerYear;
                 if (newAgeWeeks >= elderWeeks)
                 {
-                    if (Log.IsDebugEnabled) Log.Info($"{member.firstName} is an elder. Processing illness roll...");
+                    if (Log.IsDebugEnabled) Log.Debug($"{member.firstName} is an elder. Processing illness roll...");
                     _illnessManager.ProcessElderIllnessRoll(member, newAgeWeeks);
                 }
 
-                if (Log.IsDebugEnabled) Log.Info($"Processing hair greying, development, and milestones for '{member.firstName}'.");
+                if (Log.IsDebugEnabled) Log.Debug($"Processing hair greying, development, and milestones for '{member.firstName}'.");
                 ProcessHairGreying(member, newAgeWeeks);
                 _devGeneManager.ProcessDevelopment(member, newAgeWeeks, Config.weeksAgedPerInterval);
                 _milestoneManager.ProcessMilestones(member, newAgeWeeks);
@@ -407,16 +455,16 @@ namespace Lifespan
                     continue;
                 }
  
-                if (Log.IsDebugEnabled) Log.Info($"Processing death roll for '{member.firstName}'.");
+                if (Log.IsDebugEnabled) Log.Debug($"Processing death roll for '{member.firstName}'.");
                 
                 if (Config.enableNaturalDeath)
                 {
-                    _deathManager.ProcessDeathRoll(member, newAgeWeeks);
+                    _deathManager.ProcessDeathRoll(member, newAgeWeeks, elapsedBiologicalWeeks);
                 }
                 
                 if (!member.isDead)
                 {
-                    if (Log.IsDebugEnabled) Log.Info($"Member '{member.firstName}' survived. Publishing event.");
+                    if (Log.IsDebugEnabled) Log.Debug($"Member '{member.firstName}' survived. Publishing event.");
                     ModEventBus.Publish("Lifespan.CharacterAgedUp", new CharacterAgedUpArgs(member, newAgeWeeks));
                 }
                 else
@@ -452,7 +500,7 @@ namespace Lifespan
                 var profile = _ageTracker.GetOrGenerateGreyProfile(member);
                 if (profile.Gene == null) return; // Should not happen due to migration
 
-                float currentAgeYears = ageWeeks / 52f;
+                float currentAgeYears = ageWeeks / (float)LifespanConstants.WeeksPerYear;
                 float greyFactor = profile.Gene.GetGreyFactor(currentAgeYears);
 
                 if (greyFactor <= 0f) return;

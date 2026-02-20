@@ -41,7 +41,7 @@ namespace Lifespan
             }
 
             int ageWeeks = _ageTracker.GetAgeWeeks(member);
-            int ageYears = ageWeeks / 52;
+            int ageYears = ageWeeks / LifespanConstants.WeeksPerYear;
 
             if (ageYears >= _config.adultAgeYears)
             {

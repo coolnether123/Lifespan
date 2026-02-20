@@ -140,33 +140,47 @@ namespace Lifespan
 
         private static void ApplyIllnessStatModifiers(FamilyMember member)
         {
-            if (Tracker == null || IllnessManager == null) return;
+            if (Tracker == null || IllnessManager == null || member?.BaseStats == null) return;
 
             var illnesses = Tracker.GetIllnesses(member);
             if (illnesses == null || illnesses.Count == 0) return;
+            var cfg = LifespanPlugin.Instance?.Config;
  
             if (LifespanPlugin.Instance.Log.IsDebugEnabled) LifespanPlugin.Instance.Log.Debug($"ApplyIllnessStatModifiers for {member.firstName} (Illnesses: {illnesses.Count})");
             
             int intMod = 0;
             int strMod = 0;
+            int dexMod = 0;
 
             foreach (var id in illnesses)
             {
                 if (id == ElderIllnessManager.ILLNESS_DEMENTIA)
                 {
-                    intMod -= 3;
+                    float intMultiplier = (cfg != null) ? Mathf.Clamp01(cfg.dementiaIntModifier) : 0.5f;
+                    int baseInt = member.BaseStats.Intelligence != null ? member.BaseStats.Intelligence.Level : 0;
+                    intMod -= Mathf.RoundToInt(baseInt * (1f - intMultiplier));
                     if (LifespanPlugin.Instance.Log.IsDebugEnabled) LifespanPlugin.Instance.Log.Debug("Dementia detected, applying Intelligence modifier.");
                 }
                 if (id == ElderIllnessManager.ILLNESS_FRAILTY)
                 {
-                    strMod -= 2;
+                    float strMultiplier = (cfg != null) ? Mathf.Clamp01(cfg.frailtyStrModifier) : 0.6f;
+                    int baseStr = member.BaseStats.Strength != null ? member.BaseStats.Strength.Level : 0;
+                    strMod -= Mathf.RoundToInt(baseStr * (1f - strMultiplier));
                     if (LifespanPlugin.Instance.Log.IsDebugEnabled) LifespanPlugin.Instance.Log.Debug("Frailty detected, applying Strength modifier.");
+                }
+                if (id == ElderIllnessManager.ILLNESS_ARTHRITIS)
+                {
+                    float dexMultiplier = (cfg != null) ? Mathf.Clamp01(cfg.arthritisSpeedModifier) : 0.6f;
+                    int baseDex = member.BaseStats.Dexterity != null ? member.BaseStats.Dexterity.Level : 0;
+                    dexMod -= Mathf.RoundToInt(baseDex * (1f - dexMultiplier));
+                    if (LifespanPlugin.Instance.Log.IsDebugEnabled) LifespanPlugin.Instance.Log.Debug("Arthritis detected, applying Dexterity modifier.");
                 }
             }
 
-            member.BaseStats.Intelligence.SetLevelModifier(intMod);
-            member.BaseStats.Strength.SetLevelModifier(strMod);
-            if (LifespanPlugin.Instance.Log.IsDebugEnabled) LifespanPlugin.Instance.Log.Debug($"Final modifiers applied for {member.firstName} - Int: {intMod}, Str: {strMod}");
+            if (member.BaseStats.Intelligence != null) member.BaseStats.Intelligence.SetLevelModifier(intMod);
+            if (member.BaseStats.Strength != null) member.BaseStats.Strength.SetLevelModifier(strMod);
+            if (member.BaseStats.Dexterity != null) member.BaseStats.Dexterity.SetLevelModifier(dexMod);
+            if (LifespanPlugin.Instance.Log.IsDebugEnabled) LifespanPlugin.Instance.Log.Debug($"Final modifiers applied for {member.firstName} - Int: {intMod}, Str: {strMod}, Dex: {dexMod}");
         }
     }
 }
