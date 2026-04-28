@@ -31,6 +31,8 @@ namespace Lifespan
         private ChildDevelopmentManager _childDevManager;
         private NurseJobGiver _nurseJobGiver;
         private ExpeditionDialogueManager _expeditionDialogueManager;
+        private bool _pendingHydration;
+        private bool _pendingFreshGameHydration;
 
         public ILifespanAPI Api => _api;
         
@@ -77,9 +79,10 @@ namespace Lifespan
             {
                 base.Initialize(ctx); // REQUIRED for v1.2 attribute binding and config loading
                 Instance = this;
+                Config?.ValidateAndClamp();
                 
                 // 1. Initialize core utilities
-                _dialogueScheduler = new DialogueScheduler(Log);
+                _dialogueScheduler = new DialogueScheduler(Log, this.Random);
                 _dialogueHelper = new DialogueHelper(this.Random);
                 
                 // 2. Initialize primary data tracker (AgeTracker)
@@ -161,6 +164,8 @@ namespace Lifespan
             if (Log.IsDebugEnabled) Log.Debug("Subscribing to GameEvents...");
             ModAPI.Events.GameEvents.OnAfterLoad += OnGameLoad;
             ModAPI.Events.GameEvents.OnBeforeSave += OnGameSave;
+            ModAPI.Events.GameEvents.OnSessionStarted += OnSessionStarted;
+            ModAPI.Events.GameEvents.OnNewGame += OnNewGame;
             
             Log.Info("Mod successfully started (ModAPI v1.2 Compatibility enabled).");
         }
@@ -269,10 +274,13 @@ namespace Lifespan
         public void Update()
         {
             if (Config == null) return; // Prevent crash if init failing
+
+            TryHydrateAgeTrackerIfNeeded();
             
             _debugManager?.Update();
             _deathManager?.Update();
             _dialogueScheduler?.Update();
+            _childManager?.Update();
             
             if (Config.enableChildDevelopment)
                 _nurseJobGiver?.Update();
@@ -280,6 +288,33 @@ namespace Lifespan
             _expeditionDialogueManager?.Update();
 
             UpdateHairTransitions();
+        }
+
+        private void TryHydrateAgeTrackerIfNeeded(bool force = false)
+        {
+            if (_ageTracker == null || _ageTracker.IsDataHydrated) return;
+
+            var saveManager = SaveManager.instance;
+            bool saveIsLoading = saveManager != null && saveManager.isLoading;
+
+            if (!force && !_pendingHydration && !_pendingFreshGameHydration)
+            {
+                // Fallback path for fresh sessions where OnAfterLoad is not raised.
+                if (saveManager == null || saveIsLoading) return;
+                _pendingHydration = true;
+            }
+
+            if (saveIsLoading && !_pendingFreshGameHydration) return;
+            if (FamilyManager.Instance == null && !force) return;
+
+            if (_pendingFreshGameHydration)
+            {
+                _ageTracker.Reset(clearPersistentContainer: true);
+            }
+
+            _ageTracker.LoadAgeData();
+            _pendingHydration = false;
+            _pendingFreshGameHydration = false;
         }
 
         private void UpdateHairTransitions()
@@ -373,6 +408,14 @@ namespace Lifespan
                 Log.Warn("FamilyManager.Instance is null. Skipping aging cycle.");
                 return;
             }
+
+            if (_ageTracker != null && !_ageTracker.IsDataHydrated)
+            {
+                Log.Warn("AgeTracker is not hydrated yet. Skipping this weekly aging cycle.");
+                return;
+            }
+
+            Config.ValidateAndClamp();
             
             // 1. Check if we should age this week based on interval
             if (GameTime.Week % Config.agingIntervalWeeks != 0)
@@ -568,8 +611,11 @@ namespace Lifespan
         private void OnGameLoad(SaveData data)
         {
             ResetAllState();
+            Config?.ValidateAndClamp();
             if (Log.IsDebugEnabled) Log.Debug("OnGameLoad() triggering tracker load.");
             _ageTracker.LoadAgeData();
+            _pendingHydration = false;
+            _pendingFreshGameHydration = false;
             
             if (Log.IsDebugEnabled) Log.Debug("Re-applying modifiers.");
             if (FamilyManager.Instance != null)
@@ -577,10 +623,18 @@ namespace Lifespan
                 var members = FamilyManager.Instance.GetAllFamilyMembers();
                 if (members != null)
                 {
+                    int adultWeeks = Config.adultAgeYears * LifespanConstants.WeeksPerYear;
                     foreach (var m in members)
                     {
-                        if (m != null && !m.isDead)
-                            _illnessManager.ReapplyModifiers(m);
+                        if (m == null || m.isDead) continue;
+
+                        int ageWeeks = _ageTracker.GetAgeWeeks(m);
+                        if (m.isChild && ageWeeks >= adultWeeks)
+                        {
+                            _childManager.TransitionToAdult(m);
+                        }
+
+                        _illnessManager.ReapplyModifiers(m);
                     }
                 }
             }
@@ -590,9 +644,26 @@ namespace Lifespan
 
         private void OnGameSave(SaveData data)
         {
+            if (_ageTracker != null && !_ageTracker.IsDataHydrated)
+            {
+                TryHydrateAgeTrackerIfNeeded(force: true);
+            }
+
             if (Log.IsDebugEnabled) Log.Debug("OnGameSave() triggering tracker save.");
             _ageTracker.SaveAgeData();
             if (Log.IsDebugEnabled) Log.Debug("Save process notify complete.");
+        }
+
+        private void OnSessionStarted()
+        {
+            _pendingHydration = true;
+        }
+
+        private void OnNewGame()
+        {
+            _pendingHydration = true;
+            _pendingFreshGameHydration = true;
+            Log.Info("[AgeTracker] New game detected. Scheduling fresh age initialization.");
         }
 
         public void Shutdown()
@@ -601,6 +672,8 @@ namespace Lifespan
             _harmony?.UnpatchAll("com.lifespan.patches");
             ModAPI.Events.GameEvents.OnAfterLoad -= OnGameLoad;
             ModAPI.Events.GameEvents.OnBeforeSave -= OnGameSave;
+            ModAPI.Events.GameEvents.OnSessionStarted -= OnSessionStarted;
+            ModAPI.Events.GameEvents.OnNewGame -= OnNewGame;
             AgingPatches.OnNewWeekCallback = null;
             Log.Info("Mod shut down.");
         }

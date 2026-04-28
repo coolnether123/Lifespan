@@ -36,12 +36,14 @@ namespace Lifespan.Tests
             _config.illnessStageMaxYears = 8;
 
             // AgeTracker requires context/config
-            _ageTracker = new AgeTracker(_mockCtx.Object, _config);
+            _ageTracker = new AgeTracker(_mockCtx.Object, _config, new ModRandomStream(6789));
+            var dialogueHelper = new DialogueHelper(new ModRandomStream(6790));
+            dialogueHelper.SetAgeTracker(_ageTracker);
 
-            _manager = new ElderIllnessManager(_mockCtx.Object, _config, _ageTracker);
+            _manager = new ElderIllnessManager(_mockCtx.Object, _config, _ageTracker, new ModRandomStream(6791), dialogueHelper);
             
             // Set up a scheduler to show it's working
-            var scheduler = new DialogueScheduler(_mockLog.Object);
+            var scheduler = new DialogueScheduler(_mockLog.Object, new ModRandomStream(6792));
             _manager.SetScheduler(scheduler);
             TestContext.WriteLine("ElderIllnessManager initialized with DialogueScheduler for staggered delivery.");
         }

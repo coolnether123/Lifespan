@@ -1,5 +1,6 @@
 using NUnit.Framework;
 using Lifespan;
+using ModAPI.Core;
 using UnityEngine;
 using System;
 using System.Collections.Generic;
@@ -64,7 +65,7 @@ namespace Lifespan.Tests
         {
             // Test 10,000 generations to verify the distribution of greying speeds
             int iterations = 10000;
-            var rng = new System.Random(12345);
+            var rng = new ModRandomStream(12345);
             
             List<int> durations = new List<int>();
             List<int> startAges = new List<int>();

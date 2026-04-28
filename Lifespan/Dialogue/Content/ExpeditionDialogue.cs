@@ -92,7 +92,7 @@ namespace Lifespan.Dialogue.Content
                     data.Responses.Add($"I'll manage. I've walked through worse pain than a bit of clicking in my bones.");
                     data.Responses.Add(DialogueLine.WithTrait("A bit of pain is nothing compared to an empty pantry.", "Courageous"));
                     
-                    data.Closers.Add($"If it gets worse, drop the heavy salvage. Your knees aren't worth a چند pieces of scrap.");
+                    data.Closers.Add($"If it gets worse, drop the heavy salvage. Your knees are not worth a handful of scrap.");
                     data.Closers.Add($"Keep them warm. I've packed an extra blanket in your kit.");
                     data.Closers.Add($"Just... don't push it. If you can't walk, you're a liability to yourself.");
                     break;
@@ -132,7 +132,7 @@ namespace Lifespan.Dialogue.Content
             if (ageYears >= 60)
             {
                 options.Add($"{awayMemberName} is {ageYears}... I worry about their persistence on these long hauls.");
-                options.Add($"Most people {awayMemberName}'s age are long gone. Every run they take is a miracle.");
+                options.Add($"{awayMemberName} has done enough runs to know their limits. I hope they pace themselves.");
                 options.Add(DialogueLine.WithTrait($"I trust {awayMemberName}. They've seen more than the rest of us combined.", "Optimist"));
             }
 
@@ -141,9 +141,9 @@ namespace Lifespan.Dialogue.Content
                 if (illId.Contains("arthritis"))
                     options.Add($"The cold on the surface is going to be hell on {awayMemberName}'s joints.");
                 if (illId.Contains("dementia"))
-                    options.Add($"I just hope {awayMemberName} remembers the cardinal directions if the map fails.");
+                    options.Add($"I hope {awayMemberName} sticks to familiar routes and keeps the map close.");
                 if (illId.Contains("heart"))
-                    options.Add($"Every time the radio crackles, I'm afraid it's {awayMemberName}'s heart finally giving out.");
+                    options.Add($"When the radio crackles, I hope {awayMemberName} is just checking in and taking it slow.");
                 if (illId.Contains("respiratory"))
                     options.Add($"The dust storms are picking up. {awayMemberName}'s lungs can't handle that kind of grit.");
             }

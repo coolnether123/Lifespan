@@ -1,5 +1,4 @@
 using ModAPI.Core;
-using HarmonyLib;
 using System;
 using System.Collections.Generic;
 using Lifespan.Dialogue.Content;
@@ -39,7 +38,7 @@ namespace Lifespan
 
         public void Reset()
         {
-            // Maps are cleared by AgeTracker.Reset()
+            // Persistent milestone maps are owned by AgeTracker save data.
         }
 
         private void TriggerSpeech(FamilyMember member, string text, DialogueScheduler.Priority priority = DialogueScheduler.Priority.Routine, System.Func<bool> validation = null)
@@ -52,7 +51,7 @@ namespace Lifespan
         {
             if (!_config.enableJournalEntries) return;
             if (_scheduler != null) _scheduler.Enqueue(null, text, true, priority, validation);
-            else if (validation == null || validation()) InsertJournalEntry(text);
+            else if (validation == null || validation()) JournalEntryWriter.TryInsert(text, Log);
         }
 
         public void ProcessMilestones(FamilyMember member, int ageWeeks)
@@ -185,15 +184,31 @@ namespace Lifespan
 
             var theme = SkillDialogue.GetTheme(statType, isCompetitive);
             string opener = _dialogueHelper.PickLine($"Skill_{statType}_{(isCompetitive ? "Comp" : "Pride")}_Opener", theme.Openers, observer);
-            TriggerSpeech(observer, opener, DialogueScheduler.Priority.Reactive);
+            if (_scheduler == null)
+            {
+                TriggerSpeech(observer, opener, DialogueScheduler.Priority.Reactive);
+                if (_random.Value() < 0.50f)
+                {
+                    string responseFallback = _dialogueHelper.PickLine($"Skill_{statType}_Response", theme.Responses, member);
+                    TriggerSpeech(member, responseFallback, DialogueScheduler.Priority.Reactive);
+                    string finalFallback = _dialogueHelper.PickLine("Encouragement", SkillDialogue.GetEncouragementOptions(), observer);
+                    TriggerSpeech(observer, finalFallback, DialogueScheduler.Priority.Reactive);
+                }
+                return;
+            }
+
+            var turns = new List<DialogueScheduler.ConversationTurn>();
+            turns.Add(new DialogueScheduler.ConversationTurn(observer, opener));
 
             if (_random.Value() < 0.50f)
             {
                 string response = _dialogueHelper.PickLine($"Skill_{statType}_Response", theme.Responses, member);
-                TriggerSpeech(member, response, DialogueScheduler.Priority.Reactive);
+                turns.Add(new DialogueScheduler.ConversationTurn(member, response));
                 string final = _dialogueHelper.PickLine("Encouragement", SkillDialogue.GetEncouragementOptions(), observer);
-                TriggerSpeech(observer, final, DialogueScheduler.Priority.Reactive);
+                turns.Add(new DialogueScheduler.ConversationTurn(observer, final));
             }
+
+            _scheduler.EnqueueConversation(turns, DialogueScheduler.Priority.Reactive, 0.9f, 1.8f);
         }
 
         private int GetStatLevel(FamilyMember member, BaseStats.StatType statType)
@@ -245,13 +260,6 @@ namespace Lifespan
         {
             string[] items = { "ration", "can of water", "bandage", "bit of soap", "proper book" };
             return items[_random.Range(0, items.Length)];
-        }
-
-        private void InsertJournalEntry(string text)
-        {
-            if (JournalManager.Instance == null) return;
-            try { Traverse.Create(JournalManager.Instance).Method("InsertJournalEntry", new object[] { text, "", false }).GetValue(); }
-            catch (Exception ex) { Log.Error($"Failed to insert journal entry: {ex.Message}"); }
         }
 
         private bool IsOldestSurvivor(FamilyMember member)

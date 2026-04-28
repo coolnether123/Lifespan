@@ -72,30 +72,32 @@ At the death risk threshold (default: 75 years):
 - Death cause is recorded (old age or specific illness)
 - Journal entry created upon death
 
-## Configuration (New!)
+## Configuration
 
-All settings are now fully integrated into the game's **Mod Manager UI**. You can adjust these values on the fly without restarting the game.
+All settings are integrated into the in-game **Mod Manager UI** with:
+- **Simple View**: Core gameplay controls only.
+- **Advanced View**: Full tuning options and debug controls.
 
-### Life Stages
-- **Adulthood Age**: Age at which children become adults. (Default: 18)
-    - *Constraint:* Must be strictly greater than "Default Child Start Age".
-- **Elderly Age**: Age at which characters become susceptible to illness and death. (Default: 60)
-    - *Constraint:* Must be strictly greater than "Adulthood Age".
+### Simple View (Recommended Start)
+- Life stages: Adulthood and Elder age
+- Child development: broad enable/disable and fast-childhood toggle
+- Aging pace: interval and biological weeks per tick
+- Core risk: natural death difficulty, natural death toggle, elder illness chance
+- Journal and visuals toggles
 
-### Aging Speed
-- **Weeks Between Aging**: How real-time weeks correspond to biological aging checks. (Default: 1 week)
-- **Biological Weeks Per Tick**: How much older a character gets per check. (Default: 52 weeks / 1 year)
+### Advanced View
+- Starting age generation ranges and averages
+- Detailed child progression gates (movement/work/expedition ages)
+- Detailed growth tuning and milestone catch-up logic
+- Illness progression timings, per-illness toggles, and severe-effect multipliers
+- NPC age distribution controls
+- Debug options
 
-### Visuals
-- **Hair Greying**: Toggle to enable dynamic hair color fading based on genetics and age.
-
-### Elder Illnesses
-Completely toggle individual illnesses on/off:
-- **Dementia**: Reduces Intelligence.
-- **Heart Disease**: Risk of heart attacks in high stress.
-- **Arthritis**: Reduces movement speed.
-- **Frailty**: Reduces Strength.
-- **Respiratory Issues**: Affects stamina.
+### Settings Glossary
+- **Breakthrough Chance** (formerly "Spark"): chance for a bigger-than-normal stat gain event.
+- **Late-Growth Bonus** (formerly "Catch-Up Bonus"): extra growth chance when a character is behind potential near a milestone.
+- **Potential Loss Chance** (formerly "Forfeit Chance"): chance to permanently lose unused growth potential near milestone deadlines.
+- **Natural Death Difficulty** (formerly "Death Risk Multiplier"): scales age-based death probability higher or lower.
 
 ---
 

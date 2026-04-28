@@ -33,8 +33,9 @@ namespace Lifespan
                 {
                     if (!Manager.CanMove(member))
                     {
-                        // Newborns are immobile
-                        __result = 0f;
+                        // Newborns move very slowly instead of being hard-immobile to reduce soft-lock risk.
+                        float slowSpeed = __result * 0.25f;
+                        __result = Mathf.Max(0.2f, slowSpeed);
                     }
                     else
                     {

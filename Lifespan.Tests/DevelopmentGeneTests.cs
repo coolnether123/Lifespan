@@ -1,6 +1,7 @@
 using NUnit.Framework;
 using Lifespan;
 using ModAPI.Core;
+using ModAPI.Saves;
 using UnityEngine;
 using Moq;
 using System.Reflection;
@@ -15,6 +16,7 @@ namespace Lifespan.Tests
         private Mock<IModLogger> _mockLog;
         private LifespanConfig _config;
         private DevelopmentGeneManager _manager;
+        private AgeTracker _tracker;
 
         [SetUp]
         public void Setup()
@@ -22,9 +24,12 @@ namespace Lifespan.Tests
             _mockCtx = new Mock<IPluginContext>();
             _mockLog = new Mock<IModLogger>();
             _mockCtx.Setup(c => c.Log).Returns(_mockLog.Object);
+            var mockSave = new Mock<ISaveSystem>();
+            _mockCtx.Setup(c => c.SaveSystem).Returns(mockSave.Object);
             
             _config = new LifespanConfig();
-            _manager = new DevelopmentGeneManager(_mockCtx.Object, _config, null);
+            _tracker = new AgeTracker(_mockCtx.Object, _config, new ModRandomStream(3456));
+            _manager = new DevelopmentGeneManager(_mockCtx.Object, _config, _tracker, new ModRandomStream(7890));
         }
 
         private void SetTraumaValue(FamilyMember member, float value)

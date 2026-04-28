@@ -19,6 +19,13 @@ namespace Lifespan
         private readonly ModRandomStream _random;
 
         private readonly HashSet<int> _departingProcessed = new HashSet<int>();
+        private readonly Dictionary<int, float> _awaySince = new Dictionary<int, float>();
+        private readonly Dictionary<int, float> _nextAwayObservationCheck = new Dictionary<int, float>();
+
+        private const float DepartureDialogueChance = 0.25f;
+        private const float AwayObservationMinDelaySeconds = 360f;
+        private const float AwayObservationSoftDurationSeconds = 1200f;
+        private const float AwayObservationChancePerCheck = 0.08f;
 
         public ExpeditionDialogueManager(IPluginContext ctx, LifespanConfig config, AgeTracker ageTracker, ElderIllnessManager illnessManager, DialogueScheduler scheduler, DialogueHelper dialogueHelper, ModRandomStream random)
         {
@@ -36,6 +43,7 @@ namespace Lifespan
             if (FamilyManager.Instance == null) return;
             var members = FamilyManager.Instance.GetAllFamilyMembers();
             if (members == null) return;
+            float now = UnityEngine.Time.time;
 
             foreach (var member in members)
             {
@@ -55,11 +63,31 @@ namespace Lifespan
                 else
                 {
                     _departingProcessed.Remove(id);
-                    
-                    // Small chance for people in the shelter to talk about someone who is already AWAY
-                    if (member.isAway && _random.Value() < 0.005f) // Very small chance per frame/tick
+
+                    if (member.isAway)
                     {
-                        TriggerAwayObservation(member);
+                        if (!_awaySince.ContainsKey(id))
+                        {
+                            _awaySince[id] = now;
+                        }
+
+                        // Rate-limit checks per away member to avoid frame-based spam.
+                        if (!_nextAwayObservationCheck.ContainsKey(id) || now >= _nextAwayObservationCheck[id])
+                        {
+                            _nextAwayObservationCheck[id] = now + _random.Range(120f, 210f);
+                            float awayDuration = now - _awaySince[id];
+
+                            // Avoid "lost/danger" chatter immediately after departure.
+                            if (awayDuration >= AwayObservationMinDelaySeconds && _random.Value() < AwayObservationChancePerCheck)
+                            {
+                                TriggerAwayObservation(member, awayDuration);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        _awaySince.Remove(id);
+                        _nextAwayObservationCheck.Remove(id);
                     }
                 }
             }
@@ -67,7 +95,7 @@ namespace Lifespan
 
         private void CheckAndTriggerDepartureDialogue(FamilyMember member)
         {
-            if (_random.Value() > 0.4f) return; // 40% chance for departure dialogue
+            if (_random.Value() > DepartureDialogueChance) return;
 
             int ageWeeks = _ageTracker.GetAgeWeeks(member);
             int ageYears = ageWeeks / LifespanConstants.WeeksPerYear;
@@ -97,32 +125,38 @@ namespace Lifespan
         {
             var data = ExpeditionDialogue.GetIllnessConversation(member.firstName, illnessId);
             string opener = _dialogueHelper.PickLine($"ExpConv_Ill_{illnessId}_Opener", data.Openers, observer);
-            _scheduler.Enqueue(observer, opener, false, DialogueScheduler.Priority.Routine);
+            var turns = new List<DialogueScheduler.ConversationTurn>();
+            turns.Add(new DialogueScheduler.ConversationTurn(observer, opener));
 
             if (_random.Value() < 0.8f)
             {
                 string response = _dialogueHelper.PickLine($"ExpConv_Ill_{illnessId}_Response", data.Responses, member);
-                _scheduler.Enqueue(member, response, false, DialogueScheduler.Priority.Routine);
+                turns.Add(new DialogueScheduler.ConversationTurn(member, response));
 
                 string closer = _dialogueHelper.PickLine($"ExpConv_Ill_{illnessId}_Closer", data.Closers, observer);
-                _scheduler.Enqueue(observer, closer, false, DialogueScheduler.Priority.Routine);
+                turns.Add(new DialogueScheduler.ConversationTurn(observer, closer));
             }
+
+            _scheduler.EnqueueConversation(turns, DialogueScheduler.Priority.Routine, 1.2f, 2.4f);
         }
 
         private void TriggerAgingExpeditionConversation(FamilyMember observer, FamilyMember member, int ageYears)
         {
             var data = ExpeditionDialogue.GetAgingConversation(ageYears);
             string opener = _dialogueHelper.PickLine($"ExpConv_Age_{ageYears}_Opener", data.Openers, observer);
-            _scheduler.Enqueue(observer, opener, false, DialogueScheduler.Priority.Routine);
+            var turns = new List<DialogueScheduler.ConversationTurn>();
+            turns.Add(new DialogueScheduler.ConversationTurn(observer, opener));
 
             if (_random.Value() < 0.8f)
             {
                 string response = _dialogueHelper.PickLine($"ExpConv_Age_{ageYears}_Response", data.Responses, member);
-                _scheduler.Enqueue(member, response, false, DialogueScheduler.Priority.Routine);
+                turns.Add(new DialogueScheduler.ConversationTurn(member, response));
 
                 string closer = _dialogueHelper.PickLine($"ExpConv_Age_{ageYears}_Closer", data.Closers, observer);
-                _scheduler.Enqueue(observer, closer, false, DialogueScheduler.Priority.Routine);
+                turns.Add(new DialogueScheduler.ConversationTurn(observer, closer));
             }
+
+            _scheduler.EnqueueConversation(turns, DialogueScheduler.Priority.Routine, 1.2f, 2.4f);
         }
 
         private void TriggerOneOffDeparture(FamilyMember observer, FamilyMember member, int ageYears, bool isElder, List<string> illnesses)
@@ -148,7 +182,7 @@ namespace Lifespan
             return candidates[_random.Range(0, candidates.Count)];
         }
 
-        private void TriggerAwayObservation(FamilyMember awayMember)
+        private void TriggerAwayObservation(FamilyMember awayMember, float awayDurationSeconds)
         {
             var observer = GetObserver(awayMember);
             if (observer == null) return;
@@ -157,11 +191,37 @@ namespace Lifespan
             var illnesses = _illnessManager.GetActiveIllnesses(awayMember);
             
             var options = ExpeditionDialogue.GetAwayObservationOptions(awayMember.firstName, ageYears, illnesses);
+            if (awayDurationSeconds < AwayObservationSoftDurationSeconds)
+            {
+                options = FilterLowAnxietyAwayOptions(options);
+            }
             if (options.Count > 0)
             {
                 string line = _dialogueHelper.PickLine($"AwayObs_{awayMember.GetId()}", options, observer);
                 _scheduler.Enqueue(observer, line, false, DialogueScheduler.Priority.Routine);
             }
+        }
+
+        private List<DialogueLine> FilterLowAnxietyAwayOptions(List<DialogueLine> options)
+        {
+            var filtered = new List<DialogueLine>();
+            foreach (var option in options)
+            {
+                string text = option != null ? option.Text : null;
+                if (string.IsNullOrEmpty(text)) continue;
+                string lower = text.ToLowerInvariant();
+
+                if (lower.Contains("finally giving out")) continue;
+                if (lower.Contains("miracle")) continue;
+                if (lower.Contains("can't handle")) continue;
+                if (lower.Contains("afraid")) continue;
+                if (lower.Contains("getting lost")) continue;
+                if (lower.Contains("if the map fails")) continue;
+                if (lower.Contains("can't afford")) continue;
+
+                filtered.Add(option);
+            }
+            return filtered.Count > 0 ? filtered : options;
         }
 
         private string GetIllnessSimpleName(string id)
@@ -177,6 +237,8 @@ namespace Lifespan
         public void Reset()
         {
             _departingProcessed.Clear();
+            _awaySince.Clear();
+            _nextAwayObservationCheck.Clear();
         }
     }
 }

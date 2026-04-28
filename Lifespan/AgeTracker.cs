@@ -23,18 +23,14 @@ namespace Lifespan
         private readonly ModRandomStream _random;
         private AgeData _currentAgeData;
         private AgeDataSerializable _saveContainer; 
+        private bool _isDataHydrated;
+        private bool _allowFreshInitialization;
         
         private IModLogger Log => _log;
 
         // --- Biological Constants ---
 
         private const int InitialFamilyGenerationDay = 1;
-        private const int StartChildAgeMin = 10;
-        private const int StartChildAgeMax = 17;
-        private const int StartChildAgeMean = 13;
-
-        private const int AdultMinAge = 18;
-        private const int AdultMaxAge = 90;
         private const int StandardAgeVariance = 2;
         private const int AdultAgeVariance = 14;
 
@@ -56,17 +52,30 @@ namespace Lifespan
             // This ensures data is specific to this mod and won't collide with others.
             _saveContainer = new AgeDataSerializable();
             _ctx.SaveSystem.RegisterModData("LifeSpan.AgeData", _saveContainer);
+            _isDataHydrated = false;
+            _allowFreshInitialization = false;
+            Log.Debug("[AgeTracker] Save container registered: LifeSpan.AgeData");
         }
 
         /// <summary>
         /// Clear all tracking data. Typically called when starting a new game or changing slots.
         /// </summary>
-        public void Reset()
+        public void Reset(bool clearPersistentContainer = false)
         {
             Log.Debug("Resetting tracking data for fresh session.");
             _currentAgeData = new AgeData();
-            _saveContainer = new AgeDataSerializable(); // Clear container too
+            _isDataHydrated = false;
+            _allowFreshInitialization = false;
+
+            // Leave the registered container intact during normal scene/session resets.
+            // ModAPI hydration may not have run yet at this point.
+            if (clearPersistentContainer)
+            {
+                ClearSaveContainer();
+            }
         }
+
+        public bool IsDataHydrated => _isDataHydrated;
 
         /// <summary>
         /// Calculated threshold for adulthood in weeks based on configuration.
@@ -99,20 +108,29 @@ namespace Lifespan
         {
             if (isChild)
             {
-                // During initial family generation (Day 1), children are constrained to a narrower age range (10-17).
-                // recruits and subsequent character generation use configured defaults.
                 bool isInitialGeneration = GameTime.Day <= InitialFamilyGenerationDay;
-                
-                int mean = isInitialGeneration ? StartChildAgeMean : _config.initialChildAgeYears;
-                int min = isInitialGeneration ? StartChildAgeMin : 0;
-                int max = StartChildAgeMax;
-                
+                int min = Math.Max(0, _config.initialChildAgeMinYears);
+                int max = Math.Max(min, Math.Min(_config.initialChildAgeMaxYears, _config.adultAgeYears - 1));
+
+                int mean;
+                if (isInitialGeneration && _config.useRoleplayFamilyAgeModel)
+                {
+                    mean = (min + max) / 2;
+                }
+                else
+                {
+                    mean = Mathf.Clamp(_config.initialChildAgeYears, min, max);
+                }
+
                 return Mathf.Clamp(NormalDistribution(mean, StandardAgeVariance), min, max) * LifespanConstants.WeeksPerYear;
             }
             else
             {
-                // Adults approximate a standard population distribution centered on the recruit age configuration.
-                return Mathf.Clamp(NormalDistribution(_config.initialAdultAgeYears, AdultAgeVariance), AdultMinAge, AdultMaxAge) * LifespanConstants.WeeksPerYear;
+                int min = Math.Max(18, _config.initialAdultAgeMinYears);
+                int max = Math.Max(min, _config.initialAdultAgeMaxYears);
+                int mean = Mathf.Clamp(_config.initialAdultAgeYears, min, max);
+
+                return Mathf.Clamp(NormalDistribution(mean, AdultAgeVariance), min, max) * LifespanConstants.WeeksPerYear;
             }
         }
 
@@ -184,12 +202,12 @@ namespace Lifespan
 
         private int GenerateExplorerAge(BaseCharacter character)
         {
-            return Mathf.Clamp(NormalDistribution(_config.explorerMeanAge, _config.explorerStdDev), AdultMinAge, 55) * LifespanConstants.WeeksPerYear;
+            return Mathf.Clamp(NormalDistribution(_config.explorerMeanAge, _config.explorerStdDev), 18, 55) * LifespanConstants.WeeksPerYear;
         }
 
         private int GenerateShelterRecruitAge(BaseCharacter character)
         {
-            return Mathf.Clamp(NormalDistribution(_config.recruiterMeanAge, _config.recruiterStdDev), AdultMinAge, 80) * LifespanConstants.WeeksPerYear;
+            return Mathf.Clamp(NormalDistribution(_config.recruiterMeanAge, _config.recruiterStdDev), 18, 80) * LifespanConstants.WeeksPerYear;
         }
 
         private int GenerateTraderAge(BaseCharacter character)
@@ -199,7 +217,7 @@ namespace Lifespan
 
         private int GenerateDefaultNPCAge(BaseCharacter character)
         {
-            return Mathf.Clamp(NormalDistribution(35, 12), AdultMinAge, 65) * LifespanConstants.WeeksPerYear;
+            return Mathf.Clamp(NormalDistribution(35, 12), 18, 65) * LifespanConstants.WeeksPerYear;
         }
 
         /// <summary>
@@ -216,6 +234,20 @@ namespace Lifespan
                 return _currentAgeData.externalCharacterAges[id];
             }
             return 0;
+        }
+
+        public bool TryGetAgeWeeks(int id, out int ageWeeks)
+        {
+            if (_currentAgeData.familyMemberAges.TryGetValue(id, out ageWeeks))
+            {
+                return true;
+            }
+            if (_currentAgeData.externalCharacterAges.TryGetValue(id, out ageWeeks))
+            {
+                return true;
+            }
+            ageWeeks = 0;
+            return false;
         }
 
         /// <summary>
@@ -277,6 +309,15 @@ namespace Lifespan
                 return _currentAgeData.familyMemberAges[memberId];
             }
 
+            if (!_isDataHydrated && !_allowFreshInitialization)
+            {
+                if (Log.IsDebugEnabled)
+                {
+                    Log.Debug($"[AgeTracker] Age requested before hydration for {member.firstName} (ID: {memberId}). Returning 0 until load completes.");
+                }
+                return 0;
+            }
+
             // Lazy initialization for members recruited through vanilla means
             int initialAge = GenerateInitialAge(member, member.isChild);
             _currentAgeData.familyMemberAges[memberId] = initialAge;
@@ -285,6 +326,14 @@ namespace Lifespan
             ModEventBus.Publish("Lifespan.AgeInitialized", new AgeChangedArgs(member, initialAge, 0));
 
             return initialAge;
+        }
+
+        public bool TryGetAgeWeeks(FamilyMember member, out int ageWeeks)
+        {
+            ageWeeks = 0;
+            if (object.ReferenceEquals(member, null)) return false;
+            int memberId = member.GetId();
+            return _currentAgeData.familyMemberAges.TryGetValue(memberId, out ageWeeks);
         }
 
         /// <summary>
@@ -421,6 +470,12 @@ namespace Lifespan
             Log.Debug("Preparing age data for SaveSystem.");
             try
             {
+                if (!_isDataHydrated)
+                {
+                    _log.Warn("[AgeTracker] Save requested before hydration completed. Skipping age container sync.");
+                    return;
+                }
+
                 SyncWithFamilyManager();
 
                 // Convert current model to serializable format
@@ -447,6 +502,22 @@ namespace Lifespan
             }
         }
 
+        private void ClearSaveContainer()
+        {
+            if (_saveContainer == null) return;
+            _saveContainer.ages.Clear();
+            _saveContainer.externalAges.Clear();
+            _saveContainer.illnesses.Clear();
+            _saveContainer.greyProfiles.Clear();
+            _saveContainer.developmentGenes.Clear();
+            _saveContainer.onsetData.Clear();
+            _saveContainer.deathDays.Clear();
+            _saveContainer.deathAges.Clear();
+            _saveContainer.triggeredMilestones.Clear();
+            _saveContainer.lastBirthdays.Clear();
+            _saveContainer.dialogueHistory.Clear();
+        }
+
         private void SyncWithFamilyManager()
         {
             if (FamilyManager.Instance == null) return;
@@ -469,10 +540,12 @@ namespace Lifespan
             Log.Debug("Hydrating age data from SaveSystem container.");
             try
             {
+                _allowFreshInitialization = false;
+
                 if (_saveContainer != null && (_saveContainer.ages.Count > 0 || _saveContainer.externalAges.Count > 0))
                 {
                     _currentAgeData = AgeData.FromSerializable(_saveContainer);
-                    Log.Debug($"Metadata restored for {_currentAgeData.familyMemberAges.Count} members.");
+                    Log.Info($"[AgeTracker] Hydrated from v1.2 container. Members: {_currentAgeData.familyMemberAges.Count}, External: {_currentAgeData.externalCharacterAges.Count}.");
                 }
                 else
                 {
@@ -487,17 +560,37 @@ namespace Lifespan
                     }
                     else
                     {
-                        Log.Info("Starting fresh age data for session.");
+                        Log.Info("[AgeTracker] Fresh initialization path taken (no saved age data found).");
                         _currentAgeData = new AgeData();
-                        InitializeExistingMembers();
+                        _allowFreshInitialization = true;
+                        try
+                        {
+                            InitializeExistingMembers();
+                        }
+                        finally
+                        {
+                            _allowFreshInitialization = false;
+                        }
                     }
                 }
+
+                _isDataHydrated = true;
+                Log.Debug("[AgeTracker] Hydration complete.");
             }
             catch (Exception ex)
             {
                 _log.Error($"CRITICAL FAILURE loading age data: {ex.Message}");
                 _currentAgeData = new AgeData();
-                InitializeExistingMembers();
+                _allowFreshInitialization = true;
+                try
+                {
+                    InitializeExistingMembers();
+                }
+                finally
+                {
+                    _allowFreshInitialization = false;
+                }
+                _isDataHydrated = true;
             }
         }
 

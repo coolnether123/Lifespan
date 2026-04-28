@@ -26,7 +26,7 @@ namespace Lifespan.Tests
 
             _config = new LifespanConfig();
             _config.enableChildDevelopment = true;
-            _tracker = new AgeTracker(_mockCtx.Object, _config);
+            _tracker = new AgeTracker(_mockCtx.Object, _config, new ModRandomStream(12345));
         }
 
         [Test]

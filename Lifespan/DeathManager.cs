@@ -37,10 +37,7 @@ namespace Lifespan
         private void TriggerJournal(string text, DialogueScheduler.Priority priority = DialogueScheduler.Priority.Routine)
         {
             if (_scheduler != null) _scheduler.Enqueue(null, text, true, priority);
-            else if (JournalManager.Instance != null)
-            {
-                try { Traverse.Create(JournalManager.Instance).Method("InsertJournalEntry", new object[] { text, "", false }).GetValue(); } catch { }
-            }
+            else JournalEntryWriter.TryInsert(text, Log);
         }
 
         private void TriggerSpeech(FamilyMember member, string text, DialogueScheduler.Priority priority = DialogueScheduler.Priority.Routine)

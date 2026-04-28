@@ -1,8 +1,6 @@
 using System;
 using HarmonyLib;
 using ModAPI.Core;
-using HarmonyLib;
-using ModAPI.Core;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -92,8 +90,9 @@ namespace Lifespan
                 if (data.isLoading && __instance is FamilyMember member)
                 {
                     if (Tracker == null) return;
+                    if (!Tracker.IsDataHydrated) return;
 
-                    int ageWeeks = Tracker.GetAgeWeeks(member);
+                    if (!Tracker.TryGetAgeWeeks(member, out int ageWeeks)) return;
                     bool shouldBeAdult = ageWeeks >= Tracker.AdultAgeWeeks; 
 
                     if (shouldBeAdult && member.isChild)

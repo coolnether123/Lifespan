@@ -14,7 +14,7 @@ namespace Lifespan.Tests
     {
         private Mock<IPluginContext> _mockCtx;
         private Mock<IModLogger> _mockLog;
-        private Mock<AgeTracker> _mockTracker;
+        private AgeTracker _tracker;
         private LifespanConfig _config;
         private DeathManager _manager;
 
@@ -35,9 +35,8 @@ namespace Lifespan.Tests
             _config.deathProbabilityIncreasePerYear = 0.008f; // 0.008% per year = 0.00008 decimal
             _config.deathProbabilityMultiplier = 1.0f;
 
-            // Important: AgeTracker ctor will now work because ScanSystem is mocked
-            _mockTracker = new Mock<AgeTracker>(_mockCtx.Object, _config);
-            _manager = new DeathManager(_mockCtx.Object, _config, _mockTracker.Object);
+            _tracker = new AgeTracker(_mockCtx.Object, _config, new ModRandomStream(2222));
+            _manager = new DeathManager(_mockCtx.Object, _config, _tracker, new ModRandomStream(3333));
         }
 
         [Test]

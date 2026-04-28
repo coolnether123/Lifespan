@@ -1,5 +1,4 @@
 using ModAPI.Core;
-using HarmonyLib;
 using System;
 using System.Collections.Generic;
 using UnityEngine;
@@ -45,10 +44,7 @@ namespace Lifespan
         private void TriggerJournal(string text, DialogueScheduler.Priority priority = DialogueScheduler.Priority.Routine, System.Func<bool> validation = null)
         {
             if (_scheduler != null) _scheduler.Enqueue(null, text, true, priority, validation);
-            else if (JournalManager.Instance != null && (validation == null || validation()))
-            {
-                try { Traverse.Create(JournalManager.Instance).Method("InsertJournalEntry", new object[] { text, "", false }).GetValue(); } catch { }
-            }
+            else if (validation == null || validation()) JournalEntryWriter.TryInsert(text, Log);
         }
 
         private void TriggerSpeech(FamilyMember member, string text, DialogueScheduler.Priority priority = DialogueScheduler.Priority.Routine, System.Func<bool> validation = null)
@@ -198,17 +194,33 @@ namespace Lifespan
 
             var data = IllnessDialogue.GetConversation(illnessId);
             string opener = _dialogueHelper.PickLine($"IllnessConv_{illnessId}_Opener", data.Openers, observer);
-            TriggerSpeech(observer, opener, DialogueScheduler.Priority.Routine);
+            if (_scheduler == null)
+            {
+                TriggerSpeech(observer, opener, DialogueScheduler.Priority.Routine);
+                if (_random.Value() < 0.70f)
+                {
+                    string responseFallback = _dialogueHelper.PickLine($"IllnessConv_{illnessId}_Response", data.Responses, member);
+                    TriggerSpeech(member, responseFallback, DialogueScheduler.Priority.Routine);
+                    string closerFallback = _dialogueHelper.PickLine($"IllnessConv_{illnessId}_Closer", data.Closers, observer);
+                    TriggerSpeech(observer, closerFallback, DialogueScheduler.Priority.Routine);
+                }
+                return;
+            }
+
+            var turns = new List<DialogueScheduler.ConversationTurn>();
+            turns.Add(new DialogueScheduler.ConversationTurn(observer, opener));
 
             // 70% chance for the full 3-turn cycle
             if (_random.Value() < 0.70f)
             {
                 string response = _dialogueHelper.PickLine($"IllnessConv_{illnessId}_Response", data.Responses, member);
-                TriggerSpeech(member, response, DialogueScheduler.Priority.Routine);
+                turns.Add(new DialogueScheduler.ConversationTurn(member, response));
 
                 string closer = _dialogueHelper.PickLine($"IllnessConv_{illnessId}_Closer", data.Closers, observer);
-                TriggerSpeech(observer, closer, DialogueScheduler.Priority.Routine);
+                turns.Add(new DialogueScheduler.ConversationTurn(observer, closer));
             }
+
+            _scheduler.EnqueueConversation(turns, DialogueScheduler.Priority.Routine, 1.0f, 2.2f);
         }
 
         private FamilyMember GetObserver(FamilyMember excluded)

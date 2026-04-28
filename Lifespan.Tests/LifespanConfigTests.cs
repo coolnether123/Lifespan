@@ -61,8 +61,8 @@ namespace Lifespan.Tests
             // Assert
             Assert.AreEqual(1, _config.adultAgeYears); // Min 1
             Assert.AreEqual(1, _config.agingIntervalWeeks); // Min 1
-            Assert.AreEqual(100.0f, _config.elderIllnessBaseChance); // Max 100.0
-            Assert.AreEqual(0.0f, _config.deathProbabilityMultiplier); // Min 0.0
+            Assert.AreEqual(5.0f, _config.elderIllnessBaseChance); // Max 5.0
+            Assert.AreEqual(0.1f, _config.deathProbabilityMultiplier); // Min 0.1
         }
 
         [Test]
@@ -77,6 +77,22 @@ namespace Lifespan.Tests
 
             // Assert
             Assert.AreEqual(41, _config.elderAgeYears, "Elder age should be clamped to at least Adult age + 1");
+        }
+
+        [Test]
+        public void ValidateAndClamp_EnforcesChildAndExpeditionOrder()
+        {
+            _config.adultAgeYears = 18;
+            _config.mobileAgeYears = 9;
+            _config.childJobAgeYears = 5;
+            _config.expeditionMinAgeAccompanied = 4;
+            _config.expeditionMinAgeSolo = 3;
+
+            _config.ValidateAndClamp();
+
+            Assert.GreaterOrEqual(_config.childJobAgeYears, _config.mobileAgeYears);
+            Assert.GreaterOrEqual(_config.expeditionMinAgeAccompanied, _config.childJobAgeYears);
+            Assert.GreaterOrEqual(_config.expeditionMinAgeSolo, _config.expeditionMinAgeAccompanied);
         }
         
         [Test]

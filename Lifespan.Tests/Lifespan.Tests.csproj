@@ -15,10 +15,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Reference Include="Lifespan">
-      <HintPath>..\Lifespan Mod\Lifespan\Assemblies\Lifespan.dll</HintPath>
-      <Private>True</Private>
-    </Reference>
+    <ProjectReference Include="..\Lifespan\Lifespan.csproj" />
   </ItemGroup>
 
   <ItemGroup>

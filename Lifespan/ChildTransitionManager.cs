@@ -1,5 +1,5 @@
 using ModAPI.Core;
-using HarmonyLib; // Replaces ModAPI.Reflection
+using HarmonyLib;
 using System;
 using System.Collections.Generic;
 using UnityEngine;
@@ -7,7 +7,8 @@ using UnityEngine;
 namespace Lifespan
 {
     /// <summary>
-    /// Handles the transition from child to adult, including mesh swapping and stat recalculation.
+    /// Handles the transition from child to adult, including gameplay state and visual upgrades.
+    /// Gameplay adulthood is applied first and remains authoritative even if visual refresh fails.
     /// </summary>
     public class ChildTransitionManager
     {
@@ -16,6 +17,11 @@ namespace Lifespan
         private readonly AgeTracker _ageTracker;
         private readonly ModRandomStream _random;
         private IModLogger Log => _log;
+
+        private readonly Dictionary<int, int> _pendingVisualRetries = new Dictionary<int, int>();
+        private readonly Dictionary<int, float> _nextVisualRetryAt = new Dictionary<int, float>();
+        private const int MaxVisualRetries = 10;
+        private const float VisualRetryDelaySeconds = 5f;
 
         public ChildTransitionManager(IPluginContext ctx, LifespanConfig config, AgeTracker ageTracker, ModRandomStream random)
         {
@@ -27,147 +33,225 @@ namespace Lifespan
 
         public void TransitionToAdult(FamilyMember member)
         {
-            try
-            {
-                if (member == null) return;
+            if (member == null) return;
 
-                int currentStr = member.BaseStats.Strength.Level;
-                Log.Debug($"Starting adult transition for {member.firstName}. Current Stats: Str:{currentStr}. (Away: {member.isAway})");
+            bool wasChild = member.isChild;
+            int memberId = member.GetId();
+
+            // No transition work needed if already adult and there is no pending visual follow-up.
+            if (!wasChild && !_pendingVisualRetries.ContainsKey(memberId))
+            {
+                return;
+            }
+
+            if (wasChild)
+            {
+                Log.Debug($"Starting adult transition for {member.firstName}. (Away: {member.isAway})");
+                ApplyAdultGameplayState(member);
+                JournalEntryWriter.TryInsert($"{member.firstName} has reached adulthood!", Log);
+                Log.Info($"{member.firstName} has reached adulthood!");
+            }
+
+            if (member.isAway)
+            {
+                QueueVisualRetry(member, "member is currently away");
+                return;
+            }
+
+            if (TryApplyAdultVisualState(member))
+            {
+                ClearVisualRetry(memberId);
+                if (Log.IsDebugEnabled) Log.Debug($"{member.firstName} transition visuals complete.");
+            }
+            else
+            {
+                QueueVisualRetry(member, "visual refresh failed");
+            }
+        }
+
+        public void Update()
+        {
+            if (_pendingVisualRetries.Count == 0) return;
+            if (FamilyManager.Instance == null) return;
+
+            float now = Time.time;
+            var ids = new List<int>(_pendingVisualRetries.Keys);
+            foreach (int id in ids)
+            {
+                if (_nextVisualRetryAt.TryGetValue(id, out float retryAt) && now < retryAt)
+                {
+                    continue;
+                }
+
+                FamilyMember member = FindMemberById(id);
+                if (member == null || member.isDead)
+                {
+                    ClearVisualRetry(id);
+                    continue;
+                }
 
                 if (member.isAway)
                 {
-                    Log.Info($"{member.firstName} is growing up while away! Visuals will update on return.");
+                    _nextVisualRetryAt[id] = now + VisualRetryDelaySeconds;
+                    continue;
                 }
-                Log.Info($"{member.firstName} has reached adulthood!");
 
-                // 1. Update the m_child flag and mesh ID
-                // 1. Update the m_child flag and mesh ID
-                Traverse.Create(member).Field("m_child").SetValue(false);
-                string newMeshId = member.isMale ? "man" : "woman";
+                if (TryApplyAdultVisualState(member))
+                {
+                    ClearVisualRetry(id);
+                    continue;
+                }
+
+                int attempts = _pendingVisualRetries[id] + 1;
+                if (attempts >= MaxVisualRetries)
+                {
+                    Log.Warn($"Giving up visual retry for {member.firstName} after {attempts} attempts. Gameplay adulthood remains active.");
+                    ClearVisualRetry(id);
+                    continue;
+                }
+
+                _pendingVisualRetries[id] = attempts;
+                _nextVisualRetryAt[id] = now + VisualRetryDelaySeconds;
+                if (Log.IsDebugEnabled)
+                {
+                    Log.Debug($"Visual retry {attempts}/{MaxVisualRetries} queued for {member.firstName}.");
+                }
+            }
+        }
+
+        private void ApplyAdultGameplayState(FamilyMember member)
+        {
+            string newMeshId = member.isMale ? "man" : "woman";
+
+            try { Traverse.Create(member).Field("m_child").SetValue(false); } catch { }
+            try { Traverse.Create(member).Field("m_characterMeshId").SetValue(newMeshId); } catch { }
+
+            if (member.BaseStats != null)
+            {
+                UpdateStatCap(member.BaseStats.Strength, "strength");
+                UpdateStatCap(member.BaseStats.Dexterity, "dexterity");
+                UpdateStatCap(member.BaseStats.Intelligence, "intelligence");
+                UpdateStatCap(member.BaseStats.Charisma, "charisma");
+                UpdateStatCap(member.BaseStats.Perception, "perception");
+            }
+
+            var gene = _ageTracker.GetOrGenerateDevelopmentGene(member);
+            if (gene != null)
+            {
+                int oldPotential = gene.PostAdultPotential;
+                gene.TransitionToAdult();
+                if (gene.PostAdultPotential > oldPotential && Log.IsDebugEnabled)
+                {
+                    Log.Debug($"Carried over {gene.PostAdultPotential - oldPotential} points to adult potential for {member.firstName}.");
+                }
+            }
+
+            if (member.traits != null)
+            {
+                var strengths = member.traits.GetStrengths(false);
+                int strengthsToGrant = 2 - strengths.Count;
+
+                if (strengthsToGrant > 0)
+                {
+                    List<Traits.Strength> available = new List<Traits.Strength>();
+                    for (int i = 0; i < 8; i++)
+                    {
+                        Traits.Strength s = (Traits.Strength)i;
+                        if (!strengths.Contains(s))
+                        {
+                            available.Add(s);
+                        }
+                    }
+
+                    for (int i = 0; i < strengthsToGrant && available.Count > 0; i++)
+                    {
+                        int randomIndex = _random.Range(0, available.Count);
+                        Traits.Strength randomStrength = available[randomIndex];
+                        member.traits.AddStrength(randomStrength);
+                        available.RemoveAt(randomIndex);
+                        Log.Info($"{member.firstName} developed adult trait: {randomStrength}");
+                    }
+                }
+            }
+
+            try { Traverse.Create(member).Method("OnTraitsChanged").GetValue(); } catch { }
+            UpdateSaveTemp(member);
+        }
+
+        private bool TryApplyAdultVisualState(FamilyMember member)
+        {
+            if (member == null) return false;
+            if (member.isAway) return false;
+
+            string newMeshId = member.isMale ? "man" : "woman";
+            bool meshFullyUpdated = false;
+
+            try
+            {
                 Traverse.Create(member).Field("m_characterMeshId").SetValue(newMeshId);
-                Log.Debug($"Set m_child=false, m_characterMeshId={newMeshId}");
 
-                // 2. Perform mesh swap
-                Log.Debug($"Swapping mesh to {newMeshId}.");
-                SwapMesh(member, newMeshId);
-
-                // 3. Update core character components (animators, colliders, etc.)
-                Log.Debug("Refreshing character components.");
+                meshFullyUpdated = SwapMesh(member, newMeshId);
                 member.UpdateSpritesAndAnimators();
-
-                // 4. Restore mesh depth (crucial for visibility in Sheltered's 2.5D view)
-                // 4. Restore mesh depth (crucial for visibility in Sheltered's 2.5D view)
-                Traverse.Create(member).Method("SetMeshDepth", new object[] { 0 }).GetValue(); // 0 corresponds to BaseCharacter.MeshDepth.Normal
-
-
-                // 6. Increase BaseStat caps to 20 (Adult levels)
-                Log.Debug("Increasing stat caps to 20.");
-                if (member.BaseStats != null)
-                {
-                    UpdateStatCap(member.BaseStats.Strength, "strength");
-                    UpdateStatCap(member.BaseStats.Dexterity, "dexterity");
-                    UpdateStatCap(member.BaseStats.Intelligence, "intelligence");
-                    UpdateStatCap(member.BaseStats.Charisma, "charisma");
-                    UpdateStatCap(member.BaseStats.Perception, "perception");
-                }
-
-                // 6.5 Carry over leftover childhood potential
-                var gene = _ageTracker.GetOrGenerateDevelopmentGene(member);
-                if (gene != null)
-                {
-                    int oldPotential = gene.PostAdultPotential;
-                    gene.TransitionToAdult();
-                    if (gene.PostAdultPotential > oldPotential)
-                    {
-                        Log.Debug($"Carried over {gene.PostAdultPotential - oldPotential} points to adult potential for {member.firstName}.");
-                    }
-                }
-
-                // 7. Ensure character has at least TWO adult Strength traits
-                // Adults typically have 2 strengths. Without strengths to lose, characters 
-                // transition immediately to Catatonic on max trauma. With only 1 strength,
-                // they become catatonic after a single trauma event.
-                if (member.traits != null)
-                {
-                    var strengths = member.traits.GetStrengths(false);
-                    int strengthsToGrant = 2 - strengths.Count;
-
-                    if (strengthsToGrant > 0)
-                    {
-                        Log.Debug($"Granting {strengthsToGrant} adult strength(s).");
-
-                        // Build a list of available strengths (excluding any they already have)
-                        List<Traits.Strength> available = new List<Traits.Strength>();
-                        for (int i = 0; i < 8; i++)
-                        {
-                            Traits.Strength s = (Traits.Strength)i;
-                            if (!strengths.Contains(s))
-                                available.Add(s);
-                        }
-
-                        // Grant random strengths from available pool
-                        for (int i = 0; i < strengthsToGrant && available.Count > 0; i++)
-                        {
-                            int randomIndex = _random.Range(0, available.Count);
-                            Traits.Strength randomStrength = available[randomIndex];
-                            member.traits.AddStrength(randomStrength);
-                            available.RemoveAt(randomIndex);
-                            Log.Info($"{member.firstName} developed adult trait: {randomStrength}");
-                        }
-                    }
-                    else
-                    {
-                        Log.Debug("Character already has adult strengths. No traits granted.");
-                    }
-                }
-
-                // 8. Force stat recalculation
-                // 8. Force stat recalculation
-                Log.Debug("Triggering OnTraitsChanged.");
-                Traverse.Create(member).Method("OnTraitsChanged").GetValue();
-
-                // 9. Journal entry
-                if (JournalManager.Instance != null)
-                {
-                    if (JournalManager.Instance != null)
-                    {
-                        Log.Debug("Inserting Journal entry.");
-                        Traverse.Create(JournalManager.Instance).Method("InsertJournalEntry", new object[] { $"{member.firstName} has reached adulthood!", "", false }).GetValue();
-                    }
-
-                    // 10. Update SaveTemp.CharacterCustomisations for persistence
-                    UpdateSaveTemp(member);
-
-                    // 11. Refresh UI Portrait (Moved to end to ensure data consistency)
-                    Log.Debug("Updating avatar sprite.");
-                    // 11. Refresh UI Portrait (Moved to end to ensure data consistency)
-                    Log.Debug("Updating avatar sprite.");
-                    Traverse.Create(member).Method("UpdateAvatarSprite").GetValue();
-
-                    // 12. Force refresh UI height (speech bubble position)
-                    RefreshUIHeight(member);
-
-                    if (Log.IsDebugEnabled) Log.Debug($"{member.firstName} transition complete.");
-                }
+                Traverse.Create(member).Method("SetMeshDepth", new object[] { 0 }).GetValue(); // BaseCharacter.MeshDepth.Normal
+                Traverse.Create(member).Method("UpdateAvatarSprite").GetValue();
+                RefreshUIHeight(member);
             }
             catch (Exception ex)
             {
-                Log.Error($"Failed to transition {member?.firstName} to adult: {ex.Message}");
-                Log.Error($"Stack: {ex.StackTrace}");
+                Log.Error($"Failed visual adult refresh for {member.firstName}: {ex.Message}");
+                return false;
             }
+
+            return meshFullyUpdated;
+        }
+
+        private void QueueVisualRetry(FamilyMember member, string reason)
+        {
+            if (member == null) return;
+
+            int id = member.GetId();
+            if (!_pendingVisualRetries.ContainsKey(id))
+            {
+                _pendingVisualRetries[id] = 0;
+            }
+
+            _nextVisualRetryAt[id] = Time.time + VisualRetryDelaySeconds;
+            if (Log.IsDebugEnabled)
+            {
+                Log.Debug($"Queued adult visual retry for {member.firstName}: {reason}");
+            }
+        }
+
+        private void ClearVisualRetry(int memberId)
+        {
+            _pendingVisualRetries.Remove(memberId);
+            _nextVisualRetryAt.Remove(memberId);
+        }
+
+        private FamilyMember FindMemberById(int memberId)
+        {
+            var members = FamilyManager.Instance?.GetAllFamilyMembers();
+            if (members == null) return null;
+
+            foreach (var member in members)
+            {
+                if (member != null && member.GetId() == memberId)
+                {
+                    return member;
+                }
+            }
+
+            return null;
         }
 
         private void RefreshUIHeight(FamilyMember member)
         {
             if (member == null) return;
-            
+
             try
             {
-                // Find UI_Character for this member
                 UI_Character[] uiChars = GameObject.FindObjectsOfType<UI_Character>();
                 if (uiChars == null) return;
-
-                if (Log.IsDebugEnabled) Log.Debug($"Found {uiChars.Length} UI objects. Refreshing height for {member.firstName}.");
 
                 foreach (var ui in uiChars)
                 {
@@ -178,11 +262,7 @@ namespace Lifespan
 
                     if (match)
                     {
-                        // Update m_height from baseCharacter.meshUIHeight
                         float newHeight = member.meshUIHeight;
-                        if (Log.IsDebugEnabled) Log.Debug($"Updated height to {newHeight} for {member.firstName}.");
-                        
-                        // m_height is private field in UI_Character
                         Traverse.Create(ui).Field("m_height").SetValue(newHeight);
                     }
                 }
@@ -199,25 +279,24 @@ namespace Lifespan
             int currentCap = stat.LevelCap;
             if (currentCap < 20)
             {
-                Log.Debug($"{name} cap -> 20.");
+                if (Log.IsDebugEnabled) Log.Debug($"{name} cap -> 20.");
                 Traverse.Create(stat).Field("cap").SetValue(20);
             }
         }
 
-        private void SwapMesh(FamilyMember member, string meshId)
+        private bool SwapMesh(FamilyMember member, string meshId)
         {
             if (CharacterMeshOptions.instance == null)
             {
                 Log.Error("CharacterMeshOptions.instance is null! Cannot swap mesh.");
-                return;
+                return false;
             }
 
-            // Get current mesh transform and layer
             CharacterMesh currentMesh = Traverse.Create(member).Field("m_mesh").GetValue<CharacterMesh>();
             if (currentMesh == null)
             {
                 Log.Error($"CharacterMesh is null on {member.firstName}! Cannot swap.");
-                return;
+                return false;
             }
 
             Transform parent = currentMesh.transform.parent;
@@ -225,37 +304,26 @@ namespace Lifespan
             string meshLayerName = LayerMask.LayerToName(unityLayer);
             if (string.IsNullOrEmpty(meshLayerName)) meshLayerName = "mesh";
 
-            Log.Debug($"Re-instantiating mesh on layer {meshLayerName}.");
-
-            // Store colors
             Color hair = currentMesh.hairColor;
             Color skin = currentMesh.skinColor;
             Color shirt = currentMesh.shirtColor;
             Color pants = currentMesh.pantsColor;
 
-            // Destroy old
             GameObject.Destroy(currentMesh.gameObject);
 
-            // Create new
-            Log.Debug($"Instantiating new {meshId} mesh.");
             CharacterMesh newMesh = CharacterMeshOptions.instance.InstantiateNewCharacterMesh(meshId, parent, meshLayerName, 1.0f);
             if (newMesh != null)
             {
                 member.SetCharacterMesh(newMesh);
-                
-                // Transfer and refresh colors/textures
+
                 newMesh.SetColor(CharacterMesh.ColorCustomization.HairColor, hair);
                 newMesh.SetColor(CharacterMesh.ColorCustomization.SkinColor, skin);
                 newMesh.SetColor(CharacterMesh.ColorCustomization.ShirtColor, shirt);
                 newMesh.SetColor(CharacterMesh.ColorCustomization.PantsColor, pants);
-                
-                // Randomize textures for the new adult body (since kids have different texture sets)
                 newMesh.RandomizeTextures();
                 newMesh.RefreshTextures();
                 newMesh.RefreshColors();
- 
-                Log.Info($"Syncing BaseCharacter texture IDs with new mesh for {member.firstName}.");
-                // Update the BaseCharacter fields so ObtainInfo/UI can read the correct new IDs (fixing empty portraits)
+
                 var trv = Traverse.Create(member);
                 trv.Field("m_headTexture").SetValue(newMesh.headTexture);
                 trv.Field("m_torsoTexture").SetValue(newMesh.torsoTexture);
@@ -263,36 +331,31 @@ namespace Lifespan
                 trv.Field("m_originalHeadTexture").SetValue(newMesh.headTexture);
                 trv.Field("m_originalTorsoTexture").SetValue(newMesh.torsoTexture);
                 trv.Field("m_originalLegTexture").SetValue(newMesh.legTexture);
- 
-                Log.Debug($"Mesh swapped to {meshId} for {member.firstName}.");
+
+                return true;
             }
-            else
+
+            Log.Error($"Failed to instantiate {meshId}! Attempting fallback to child mesh.");
+            string fallbackId = member.isMale ? "boy" : "girl";
+            CharacterMesh fallbackMesh = CharacterMeshOptions.instance.InstantiateNewCharacterMesh(fallbackId, parent, meshLayerName, 1.0f);
+            if (fallbackMesh != null)
             {
-                Log.Error($"Failed to instantiate {meshId}! Attempting fallback to child mesh.");
-                string fallbackId = member.isMale ? "boy" : "girl";
-                CharacterMesh fallbackMesh = CharacterMeshOptions.instance.InstantiateNewCharacterMesh(fallbackId, parent, meshLayerName, 1.0f);
-                if (fallbackMesh != null)
-                {
-                    member.SetCharacterMesh(fallbackMesh);
-                    fallbackMesh.SetColor(CharacterMesh.ColorCustomization.HairColor, hair);
-                    fallbackMesh.SetColor(CharacterMesh.ColorCustomization.SkinColor, skin);
-                    fallbackMesh.SetColor(CharacterMesh.ColorCustomization.ShirtColor, shirt);
-                    fallbackMesh.SetColor(CharacterMesh.ColorCustomization.PantsColor, pants);
-                    fallbackMesh.RefreshColors();
-                    
-                    // Revert adult status since we failed to become an adult visually
-                    Traverse.Create(member).Field("m_child").SetValue(true);
-                    Traverse.Create(member).Field("m_characterMeshId").SetValue(fallbackId);
-                    Log.Warn($"Reverted {member.firstName} to child state due to mesh failure.");
-                }
+                member.SetCharacterMesh(fallbackMesh);
+                fallbackMesh.SetColor(CharacterMesh.ColorCustomization.HairColor, hair);
+                fallbackMesh.SetColor(CharacterMesh.ColorCustomization.SkinColor, skin);
+                fallbackMesh.SetColor(CharacterMesh.ColorCustomization.ShirtColor, shirt);
+                fallbackMesh.SetColor(CharacterMesh.ColorCustomization.PantsColor, pants);
+                fallbackMesh.RefreshColors();
+                Log.Warn($"Using fallback child mesh visuals for {member.firstName}; gameplay adulthood remains active.");
             }
+
+            return false;
         }
 
         private void UpdateSaveTemp(FamilyMember member)
         {
             if (SaveTemp.CharacterCustomisations == null) return;
 
-            Log.Debug($"Syncing SaveTemp record for {member.firstName}.");
             foreach (var custom in SaveTemp.CharacterCustomisations)
             {
                 if (custom != null && custom.memberAttributes != null && custom.memberAttributes.m_firstName == member.firstName)
@@ -301,7 +364,6 @@ namespace Lifespan
                     string meshId = member.isMale ? "Man" : "Woman";
                     custom.memberAttributes.m_meshId = meshId;
 
-                    // IMPORTANT: Update the mesh object itself so portraits and UI work correctly
                     if (CharacterMeshOptions.instance != null)
                     {
                         var meshType = CharacterMeshOptions.instance.FindCharacterMesh(meshId);
@@ -311,7 +373,6 @@ namespace Lifespan
                         }
                     }
 
-                    Log.Debug($"Updated SaveTemp entry for {member.firstName}.");
                     break;
                 }
             }

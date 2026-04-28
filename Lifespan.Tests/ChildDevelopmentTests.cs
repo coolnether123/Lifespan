@@ -35,7 +35,7 @@ namespace Lifespan.Tests
             _config.enableChildDevelopment = true;
             
             // Create a real AgeTracker with mocked context
-            var ageTracker = new AgeTracker(_mockCtx.Object, _config);
+            var ageTracker = new AgeTracker(_mockCtx.Object, _config, new ModRandomStream(4567));
             _manager = new ChildDevelopmentManager(_mockCtx.Object, _config, ageTracker);
         }
 

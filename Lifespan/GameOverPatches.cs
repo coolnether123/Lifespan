@@ -1,6 +1,5 @@
 using HarmonyLib;
 using ModAPI.Core;
-using ModAPI.Core;
 using System;
 using System.Reflection;
 using UnityEngine;

@@ -31,11 +31,13 @@ namespace Lifespan.Tests
 
             _config = new LifespanConfig();
             
-            _ageTracker = new AgeTracker(_mockCtx.Object, _config);
-            _manager = new MilestoneManager(_mockCtx.Object, _config, _ageTracker);
+            _ageTracker = new AgeTracker(_mockCtx.Object, _config, new ModRandomStream(8910));
+            var dialogueHelper = new DialogueHelper(new ModRandomStream(8911));
+            dialogueHelper.SetAgeTracker(_ageTracker);
+            _manager = new MilestoneManager(_mockCtx.Object, _config, _ageTracker, new ModRandomStream(8912), dialogueHelper);
             
             // Set up a scheduler to show it's working
-            var scheduler = new DialogueScheduler(_mockLog.Object);
+            var scheduler = new DialogueScheduler(_mockLog.Object, new ModRandomStream(8913));
             _manager.SetScheduler(scheduler);
             TestContext.WriteLine("MilestoneManager initialized with DialogueScheduler for staggered delivery.");
         }
@@ -136,8 +138,8 @@ namespace Lifespan.Tests
         {
             var member = CreateDummyMember(10 * 52, true);
             
-            _manager.ReportFirstSkill(member);
-            _manager.ReportFirstSkill(member); // Second time should be ignored by internal state
+            _manager.ReportSkillGain(member, BaseStats.StatType.Strength);
+            _manager.ReportSkillGain(member, BaseStats.StatType.Strength); // Second time should be ignored by internal state
             
             Assert.Pass("First skill milestone logic executed.");
         }

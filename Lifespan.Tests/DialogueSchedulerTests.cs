@@ -17,7 +17,7 @@ namespace Lifespan.Tests
         public void Setup()
         {
             _mockLog = new Mock<IModLogger>();
-            _scheduler = new DialogueScheduler(_mockLog.Object);
+            _scheduler = new DialogueScheduler(_mockLog.Object, new ModRandomStream(9012));
             // Mock time and random to avoid Unity ECall errors
             _scheduler.SetTestProvider(() => _currentTime, (min, max) => 2f); // Always return 2f for jitter
         }
