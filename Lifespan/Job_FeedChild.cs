@@ -191,5 +191,38 @@ namespace Lifespan
                  ai.CarriedFood_Feed(); // Clear hands
              }
         }
+
+        public override void SaveLoadJob(SaveData data)
+        {
+            base.SaveLoadJob(data);
+
+            int childId = _child != null ? _child.GetId() : -1;
+            int stage = (int)_stage;
+
+            bool savedChild = data.SaveLoad(ChildCareJobSaveLoadHelper.ChildIdKey, ref childId);
+            bool savedStage = data.SaveLoad("lifespanFeedChildStage", ref stage);
+
+            if (!data.isLoading)
+            {
+                return;
+            }
+
+            _feeder = character;
+            _child = ChildCareJobSaveLoadHelper.ResolveChild(childId);
+
+            if (_child == null && !savedChild)
+            {
+                _child = ChildCareJobSaveLoadHelper.FindClosestChildToSavedLocation(character, location);
+            }
+
+            if (savedStage && stage >= 0 && stage <= (int)FeedState.Feed)
+            {
+                _stage = (FeedState)stage;
+            }
+            else
+            {
+                _stage = FeedState.GoToChild;
+            }
+        }
     }
 }

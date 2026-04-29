@@ -122,6 +122,39 @@ namespace Lifespan
             OnFinishedJob();
         }
 
+        public override void SaveLoadJob(SaveData data)
+        {
+            base.SaveLoadJob(data);
+
+            int childId = Child != null ? Child.GetId() : -1;
+            int phase = (int)_phase;
+
+            bool savedChild = data.SaveLoad(ChildCareJobSaveLoadHelper.ChildIdKey, ref childId);
+            bool savedPhase = data.SaveLoad("lifespanChildCarePhase", ref phase);
+
+            if (!data.isLoading)
+            {
+                return;
+            }
+
+            Caregiver = character;
+            Child = ChildCareJobSaveLoadHelper.ResolveChild(childId);
+
+            if (Child == null && !savedChild)
+            {
+                Child = ChildCareJobSaveLoadHelper.FindClosestChildToSavedLocation(character, location);
+            }
+
+            if (savedPhase && phase >= 0 && phase <= (int)ChildCareJobPhase.ApplyCare)
+            {
+                _phase = (ChildCareJobPhase)phase;
+            }
+            else
+            {
+                _phase = ChildCareJobPhase.GoToChild;
+            }
+        }
+
         private void BeginPhase()
         {
             if (!HasParticipants())
