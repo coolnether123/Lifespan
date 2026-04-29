@@ -1,3 +1,5 @@
+using HarmonyLib;
+
 namespace Lifespan
 {
     /// <summary>
@@ -8,35 +10,107 @@ namespace Lifespan
     {
         public static bool IsDepartingOrAway(FamilyMember member)
         {
-            if (member == null) return false;
+            string reason;
+            return IsExpeditionTransitionOrAway(member, out reason);
+        }
 
-            if (member.isAway || member.finishedLeavingShelter)
+        public static bool IsExpeditionTransitionOrAway(FamilyMember member, out string reason)
+        {
+            reason = null;
+            if (object.ReferenceEquals(member, null)) return false;
+
+            if (member.isAway)
+            {
+                reason = "away";
                 return true;
+            }
 
-            return HasDepartureJobQueued(member);
+            if (member.finishedLeavingShelter)
+            {
+                reason = "finished-leaving-shelter";
+                return true;
+            }
+
+            if (HasDepartureJobQueued(member))
+            {
+                reason = "departing";
+                return true;
+            }
+
+            if (HasReturnJobQueued(member))
+            {
+                reason = "returning";
+                return true;
+            }
+
+            reason = null;
+            return false;
         }
 
         public static bool HasDepartureJobQueued(FamilyMember member)
         {
-            if (member == null || member.job_queue == null)
+            return HasExpeditionJobQueued(member, Job_GoToLocation.LocationReachedAction.LeftForExpedition, includeLegacyLeaveJobs: true);
+        }
+
+        public static bool HasReturnJobQueued(FamilyMember member)
+        {
+            return HasExpeditionJobQueued(member, Job_GoToLocation.LocationReachedAction.ReturnedFromExpedition, includeLegacyLeaveJobs: false);
+        }
+
+        private static bool HasExpeditionJobQueued(
+            FamilyMember member,
+            Job_GoToLocation.LocationReachedAction action,
+            bool includeLegacyLeaveJobs)
+        {
+            if (object.ReferenceEquals(member, null))
                 return false;
 
-            int count = member.job_queue.size;
+            return HasExpeditionJobQueued(member.job_queue, action, includeLegacyLeaveJobs) ||
+                HasExpeditionJobQueued(member.ai_queue, action, includeLegacyLeaveJobs);
+        }
+
+        private static bool HasExpeditionJobQueued(
+            JobQueue queue,
+            Job_GoToLocation.LocationReachedAction action,
+            bool includeLegacyLeaveJobs)
+        {
+            if (queue == null)
+                return false;
+
+            int count = queue.size;
             for (int i = 0; i < count; i++)
             {
-                Job job = member.job_queue.GetAt(i);
+                Job job = queue.GetAt(i);
                 if (job == null) continue;
 
                 string jt = job.GetJobType();
-                if (jt == "Job_GoToLocation" || jt == "Job_LeaveShelter")
+                if (jt == "Job_GoToLocation" && HasGoToLocationAction(job, action))
+                    return true;
+
+                if (includeLegacyLeaveJobs && jt == "Job_LeaveShelter")
                     return true;
 
                 // Some engine transitions surface as base Job with type tag.
-                if (jt == "Job" && job.type == "go_to_location")
+                if (includeLegacyLeaveJobs && jt == "Job" && job.type == "go_to_location")
                     return true;
             }
 
             return false;
+        }
+
+        private static bool HasGoToLocationAction(Job job, Job_GoToLocation.LocationReachedAction action)
+        {
+            if (job == null) return false;
+
+            try
+            {
+                object value = AccessTools.Field(typeof(Job_GoToLocation), "m_callbackAction")?.GetValue(job);
+                return value is Job_GoToLocation.LocationReachedAction && (Job_GoToLocation.LocationReachedAction)value == action;
+            }
+            catch
+            {
+                return false;
+            }
         }
     }
 }

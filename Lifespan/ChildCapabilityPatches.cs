@@ -197,13 +197,16 @@ namespace Lifespan
                 if (menu == null || child.stats == null) return;
 
                 List<string> options = new List<string>();
-                float threshold = 30f; // Appears when they have 70% "left" (30% filled)
+                Dictionary<string, ChildCareNeedDefinition> optionNeeds = new Dictionary<string, ChildCareNeedDefinition>();
 
-                if (child.stats.hunger.Value >= threshold) options.Add("Feed");
-                if (child.stats.thirst.Value >= threshold) options.Add("Give Water");
-                if (child.stats.toilet.Value >= threshold) options.Add("Change Diaper");
-                if (child.stats.dirtiness.Value >= threshold) options.Add("Clean");
-                if (child.stats.fatigue.Value >= threshold) options.Add("Comfort (Sleep)");
+                foreach (ChildCareNeedDefinition need in ChildCareNeeds.GetManualMenuNeeds())
+                {
+                    if (ChildCareNeedStatus.IsNeeded(child, need))
+                    {
+                        options.Add(need.MenuLabel);
+                        optionNeeds[need.MenuLabel] = need;
+                    }
+                }
 
                 if (options.Count == 0) return; // Nothing needed right now
                 
@@ -218,12 +221,13 @@ namespace Lifespan
                 {
                     if (feeder.job_queue != null)
                     {
-                        Job job = null;
-                        if (choice == "Feed") job = new Job_FeedChild(feeder, child);
-                        else if (choice == "Give Water") job = new Job_GiveWaterChild(feeder, child);
-                        else if (choice == "Change Diaper") job = new Job_ChangeDiaper(feeder, child);
-                        else if (choice == "Clean") job = new Job_CleanChild(feeder, child);
-                        else if (choice == "Comfort (Sleep)") job = new Job_HelpSleepChild(feeder, child);
+                        ChildCareNeedDefinition selectedNeed;
+                        if (!optionNeeds.TryGetValue(choice, out selectedNeed))
+                        {
+                            return;
+                        }
+
+                        Job job = ChildCareJobFactory.Create(selectedNeed, feeder, child);
 
                         if (job != null)
                         {

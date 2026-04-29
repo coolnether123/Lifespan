@@ -1,94 +1,22 @@
-using UnityEngine;
-using ModAPI.Core;
-
 namespace Lifespan
 {
-    public class Job_HelpSleepChild : Job
+    public class Job_HelpSleepChild : ChildCareJobBase
     {
-        private FamilyMember _child;
-        private FamilyMember _caregiver;
-        private SleepState _stage;
-        
-        private enum SleepState
-        {
-            GoToChild,
-            HelpSleep
-        }
-
         public Job_HelpSleepChild() { }
 
-        public Job_HelpSleepChild(FamilyMember caregiver, FamilyMember child) : base("help_sleep_child", child.transform.position, caregiver, null)
+        public Job_HelpSleepChild(FamilyMember caregiver, FamilyMember child)
+            : base(ChildCareNeeds.ComfortSleep, caregiver, child, false)
         {
-            _caregiver = caregiver;
-            _child = child;
-            _stage = SleepState.GoToChild;
         }
 
-        public override string GetJobType() => "Job_HelpSleepChild";
+        protected override ChildCareNeedDefinition Need => ChildCareNeeds.ComfortSleep;
 
-        public override void Activate()
+        protected override void ApplyCare()
         {
-            BeginStage();
-            base.Activate();
-        }
-
-        public override bool BeginJob()
-        {
-            if (_child == null || _caregiver == null) { Cancel(true); return false; }
-            this.state = JobState.Started;
-            return true;
-        }
-
-        public override void UpdateJob()
-        {
-            if (_stage == SleepState.GoToChild)
+            if (Child.stats != null && Child.stats.fatigue != null)
             {
-                if (HasArrived(_child.transform.position))
-                {
-                    _stage = SleepState.HelpSleep;
-                    BeginStage();
-                }
-                else
-                {
-                    if (Vector3.Distance(character.transform.position, _child.transform.position) > LifespanConstants.UpdateTargetDistance)
-                    {
-                        this.location = _child.transform.position;
-                        character.WalkToPosition(this.location);
-                    }
-                }
+                Child.stats.fatigue.Modify(-50f);
             }
-            else if (_stage == SleepState.HelpSleep)
-            {
-                if (_child.stats != null && _child.stats.fatigue != null)
-                {
-                    // Comfort the child, reducing fatigue significantly (power nap assistance)
-                    _child.stats.fatigue.Modify(-50f); 
-                }
-                
-                state = JobState.Finished;
-                OnFinishedJob();
-            }
-        }
-
-        private void BeginStage()
-        {
-            if (GetCancelState() != JobCancelState.Active)
-            {
-                state = JobState.Finished;
-                OnFinishedJob();
-                return;
-            }
-
-            if (_stage == SleepState.GoToChild)
-            {
-                this.location = _child.transform.position;
-                this.character.WalkToPosition(this.location);
-            }
-        }
-
-        private bool HasArrived(Vector3 target)
-        {
-            return Vector3.Distance(character.transform.position, target) < LifespanConstants.ArrivalDistance;
         }
     }
 }

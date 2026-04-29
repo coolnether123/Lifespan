@@ -77,6 +77,13 @@ namespace Lifespan
 
         public bool IsDataHydrated => _isDataHydrated;
 
+        public int LastProcessedAgingWeek => _currentAgeData.lastProcessedAgingWeek;
+
+        public void MarkAgingWeekProcessed(int week)
+        {
+            _currentAgeData.lastProcessedAgingWeek = week;
+        }
+
         /// <summary>
         /// Calculated threshold for adulthood in weeks based on configuration.
         /// </summary>
@@ -493,6 +500,7 @@ namespace Lifespan
                 _saveContainer.triggeredMilestones = freshData.triggeredMilestones;
                 _saveContainer.lastBirthdays = freshData.lastBirthdays;
                 _saveContainer.dialogueHistory = freshData.dialogueHistory;
+                _saveContainer.lastProcessedAgingWeek = freshData.lastProcessedAgingWeek;
 
                 if (Log.IsDebugEnabled) Log.Debug($"Synced {freshData.ages.Count} members and {freshData.externalAges.Count} NPCs to save container.");
             }
@@ -516,6 +524,7 @@ namespace Lifespan
             _saveContainer.triggeredMilestones.Clear();
             _saveContainer.lastBirthdays.Clear();
             _saveContainer.dialogueHistory.Clear();
+            _saveContainer.lastProcessedAgingWeek = WeeklyAgingPolicy.NoProcessedWeek;
         }
 
         private void SyncWithFamilyManager()
@@ -849,6 +858,7 @@ namespace Lifespan
         public Dictionary<int, HashSet<string>> triggeredMilestones = new Dictionary<int, HashSet<string>>();
         public Dictionary<int, int> lastBirthdayYear = new Dictionary<int, int>();
         public Dictionary<string, HashSet<int>> dialogueHistory = new Dictionary<string, HashSet<int>>();
+        public int lastProcessedAgingWeek = WeeklyAgingPolicy.NoProcessedWeek;
 
         public Dictionary<int, int> deceasedDeathDays = new Dictionary<int, int>();
         public Dictionary<int, int> deceasedDeathAges = new Dictionary<int, int>();
@@ -868,6 +878,7 @@ namespace Lifespan
             foreach (var kvp in triggeredMilestones) s.triggeredMilestones.Add(new MilestoneEntry { id = kvp.Key, keys = new List<string>(kvp.Value) });
             foreach (var kvp in lastBirthdayYear) s.lastBirthdays.Add(new BirthdayEntry { id = kvp.Key, year = kvp.Value });
             foreach (var kvp in dialogueHistory) s.dialogueHistory.Add(new DialogueHistoryEntry { key = kvp.Key, hashes = new List<int>(kvp.Value) });
+            s.lastProcessedAgingWeek = lastProcessedAgingWeek;
             
             return s;
         }
@@ -888,6 +899,7 @@ namespace Lifespan
             if (s.triggeredMilestones != null) foreach (var entry in s.triggeredMilestones) data.triggeredMilestones[entry.id] = new HashSet<string>(entry.keys);
             if (s.lastBirthdays != null) foreach (var entry in s.lastBirthdays) data.lastBirthdayYear[entry.id] = entry.year;
             if (s.dialogueHistory != null) foreach (var entry in s.dialogueHistory) data.dialogueHistory[entry.key] = new HashSet<int>(entry.hashes);
+            data.lastProcessedAgingWeek = s.lastProcessedAgingWeek;
             
             return data;
         }
@@ -911,6 +923,7 @@ namespace Lifespan
         public List<MilestoneEntry> triggeredMilestones = new List<MilestoneEntry>();
         public List<BirthdayEntry> lastBirthdays = new List<BirthdayEntry>();
         public List<DialogueHistoryEntry> dialogueHistory = new List<DialogueHistoryEntry>();
+        public int lastProcessedAgingWeek = WeeklyAgingPolicy.NoProcessedWeek;
     }
 
     [Serializable] public class MilestoneEntry { public int id; public List<string> keys = new List<string>(); }
