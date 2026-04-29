@@ -3,8 +3,8 @@ using System.Collections.Generic;
 using ModAPI;
 using ModAPI.Core;
 using ModAPI.Util;
-using ModAPI.Saves;
 using ModAPI.Events;
+using ShelteredAPI.Events;
 using UnityEngine;
 using HarmonyLib;
 using ModAPI.Spine; // Required for settings UI support
@@ -160,14 +160,14 @@ namespace Lifespan
             // Manually patch all non-public methods
             ApplyManualPatches();
         
-            // 5. Subscribe to game events via ModAPI
-            if (Log.IsDebugEnabled) Log.Debug("Subscribing to GameEvents...");
-            ModAPI.Events.GameEvents.OnAfterLoad += OnGameLoad;
-            ModAPI.Events.GameEvents.OnBeforeSave += OnGameSave;
-            ModAPI.Events.GameEvents.OnSessionStarted += OnSessionStarted;
-            ModAPI.Events.GameEvents.OnNewGame += OnNewGame;
+            // 5. Subscribe to Sheltered game events
+            if (Log.IsDebugEnabled) Log.Debug("Subscribing to ShelteredEvents...");
+            ShelteredEvents.AfterLoad += OnGameLoad;
+            ShelteredEvents.BeforeSave += OnGameSave;
+            ShelteredEvents.SessionStarted += OnSessionStarted;
+            ShelteredEvents.NewGame += OnNewGame;
             
-            Log.Info("Mod successfully started (ModAPI v1.2 Compatibility enabled).");
+            Log.Info("Mod successfully started.");
         }
 
         private void ApplyManualPatches()
@@ -700,10 +700,10 @@ namespace Lifespan
         {
             if (Log.IsDebugEnabled) Log.Debug("Shutdown() starting.");
             _harmony?.UnpatchAll("com.lifespan.patches");
-            ModAPI.Events.GameEvents.OnAfterLoad -= OnGameLoad;
-            ModAPI.Events.GameEvents.OnBeforeSave -= OnGameSave;
-            ModAPI.Events.GameEvents.OnSessionStarted -= OnSessionStarted;
-            ModAPI.Events.GameEvents.OnNewGame -= OnNewGame;
+            ShelteredEvents.AfterLoad -= OnGameLoad;
+            ShelteredEvents.BeforeSave -= OnGameSave;
+            ShelteredEvents.SessionStarted -= OnSessionStarted;
+            ShelteredEvents.NewGame -= OnNewGame;
             AgingPatches.OnNewWeekCallback = null;
             Log.Info("Mod shut down.");
         }

@@ -1,5 +1,4 @@
 using ModAPI.Core;
-using ModAPI.Saves;
 using ModAPI.Util;
 using ModAPI.Events;
 using HarmonyLib;
@@ -48,7 +47,7 @@ namespace Lifespan
             _currentAgeData = new AgeData();
             _random = random;
             
-            // Register for automatic v1.2 isolated save data tagging.
+            // Register for isolated per-mod save data tagging.
             // This ensures data is specific to this mod and won't collide with others.
             _saveContainer = new AgeDataSerializable();
             _ctx.SaveSystem.RegisterModData("LifeSpan.AgeData", _saveContainer);
@@ -558,28 +557,17 @@ namespace Lifespan
                 }
                 else
                 {
-                    _log.Warn("No records found in v1.2 save container. Check for legacy data...");
-                    
-                    // Backward compatibility: Migration from v1.1 file-based storage
-                    AgeDataSerializable legacyData;
-                    if (_ctx.LoadData("LifeSpan.AgeData", out legacyData))
+                    _log.Warn("No records found in save container.");
+                    Log.Info("[AgeTracker] Fresh initialization path taken (no saved age data found).");
+                    _currentAgeData = new AgeData();
+                    _allowFreshInitialization = true;
+                    try
                     {
-                        Log.Info("Migrated legacy v1.1 age data to v1.2 container.");
-                        _currentAgeData = AgeData.FromSerializable(legacyData);
+                        InitializeExistingMembers();
                     }
-                    else
+                    finally
                     {
-                        Log.Info("[AgeTracker] Fresh initialization path taken (no saved age data found).");
-                        _currentAgeData = new AgeData();
-                        _allowFreshInitialization = true;
-                        try
-                        {
-                            InitializeExistingMembers();
-                        }
-                        finally
-                        {
-                            _allowFreshInitialization = false;
-                        }
+                        _allowFreshInitialization = false;
                     }
                 }
 
