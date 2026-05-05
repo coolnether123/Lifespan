@@ -1,19 +1,43 @@
 using HarmonyLib;
 using ModAPI.Core;
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace Lifespan
 {
+    internal static class TooltipAgeFormatter
+    {
+        private const string AgeMarker = "(Age:";
+
+        internal static string GetBaseName(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return string.Empty;
+
+            int markerIndex = text.LastIndexOf(AgeMarker, StringComparison.Ordinal);
+            if (markerIndex <= 0) return text.Trim();
+
+            return text.Substring(0, markerIndex).Trim();
+        }
+
+        internal static string Format(string text, int ageYears)
+        {
+            return GetBaseName(text) + " (Age: " + ageYears + ")";
+        }
+    }
+
     public static class TooltipCache
     {
-        private static System.Collections.Generic.Dictionary<UI_CharacterTooltip, TooltipData> _cache 
-            = new System.Collections.Generic.Dictionary<UI_CharacterTooltip, TooltipData>();
+        private static Dictionary<UI_CharacterTooltip, TooltipData> _cache 
+            = new Dictionary<UI_CharacterTooltip, TooltipData>();
 
         private class TooltipData
         {
             public FamilyMember Member;
             public UILabel Label;
+            public string BaseName;
+            public int LastAgeYears = -1;
+            public string LastAppliedText;
         }
 
         public static void OnTooltipShow(UI_CharacterTooltip tooltip)
@@ -22,7 +46,7 @@ namespace Lifespan
             {
                 var member = Traverse.Create(tooltip).Field("m_member").GetValue<FamilyMember>();
                 var label = Traverse.Create(tooltip).Field("m_name").GetValue<UILabel>();
-                _cache[tooltip] = new TooltipData { Member = member, Label = label };
+                _cache[tooltip] = CreateData(member, label);
             }
         }
 
@@ -39,29 +63,79 @@ namespace Lifespan
 
         public static bool TryGetData(UI_CharacterTooltip tooltip, out FamilyMember member, out UILabel label)
         {
-            if (LifespanPlugin.Instance.Log.IsDebugEnabled) LifespanPlugin.Instance.Log.Debug("[TooltipCache] TryGetData called.");
             member = null;
             label = null;
             if (_cache.TryGetValue(tooltip, out var data))
             {
                 member = data.Member;
                 label = data.Label;
-                if (LifespanPlugin.Instance.Log.IsDebugEnabled) LifespanPlugin.Instance.Log.Debug("[TooltipCache] Found data in cache.");
                 return true;
             }
             
-            if (LifespanPlugin.Instance.Log.IsDebugEnabled) LifespanPlugin.Instance.Log.Debug("[TooltipCache] No cache entry found. Using reflection fallback.");
             member = Traverse.Create(tooltip).Field("m_member").GetValue<FamilyMember>();
             label = Traverse.Create(tooltip).Field("m_name").GetValue<UILabel>();
-            if (LifespanPlugin.Instance.Log.IsDebugEnabled) LifespanPlugin.Instance.Log.Debug($"[TooltipCache] Reflection result: member is {(member == null ? "null" : "found")}, label is {(label == null ? "null" : "found")}");
             
             if (member != null && label != null)
             {
-                if (LifespanPlugin.Instance.Log.IsDebugEnabled) LifespanPlugin.Instance.Log.Debug("[TooltipCache] Caching new data.");
-                _cache[tooltip] = new TooltipData { Member = member, Label = label };
+                _cache[tooltip] = CreateData(member, label);
             }
                 
             return member != null && label != null;
+        }
+
+        public static bool TryApplyAge(UI_CharacterTooltip tooltip, int ageYears)
+        {
+            TooltipData data = GetOrCreateData(tooltip);
+            if (data == null || data.Member == null || data.Label == null) return false;
+
+            string currentText = data.Label.text ?? string.Empty;
+            if (data.LastAppliedText == null || currentText != data.LastAppliedText)
+            {
+                data.BaseName = TooltipAgeFormatter.GetBaseName(currentText);
+                data.LastAgeYears = -1;
+            }
+
+            if (data.LastAgeYears == ageYears && currentText == data.LastAppliedText)
+            {
+                return true;
+            }
+
+            string newText = TooltipAgeFormatter.Format(data.BaseName, ageYears);
+            if (currentText != newText)
+            {
+                data.Label.text = newText;
+            }
+
+            data.LastAgeYears = ageYears;
+            data.LastAppliedText = newText;
+            return true;
+        }
+
+        private static TooltipData GetOrCreateData(UI_CharacterTooltip tooltip)
+        {
+            TooltipData data;
+            if (_cache.TryGetValue(tooltip, out data))
+            {
+                return data;
+            }
+
+            FamilyMember member;
+            UILabel label;
+            TryGetData(tooltip, out member, out label);
+            _cache.TryGetValue(tooltip, out data);
+            return data;
+        }
+
+        private static TooltipData CreateData(FamilyMember member, UILabel label)
+        {
+            return new TooltipData
+            {
+                Member = member,
+                Label = label,
+                BaseName = TooltipAgeFormatter.GetBaseName(label != null ? label.text : null),
+                LastAgeYears = -1,
+                LastAppliedText = null
+            };
         }
     }
 
@@ -69,7 +143,6 @@ namespace Lifespan
     {
         public static void Postfix(UI_CharacterTooltip __instance)
         {
-            if (LifespanPlugin.Instance.Log.IsDebugEnabled) LifespanPlugin.Instance.Log.Debug("[UIPatch] Postfix entered.");
             try
             {
                 FamilyMember member;
@@ -77,53 +150,22 @@ namespace Lifespan
                 
                 if (!TooltipCache.TryGetData(__instance, out member, out nameLabel))
                 {
-                    if (LifespanPlugin.Instance.Log.IsDebugEnabled) LifespanPlugin.Instance.Log.Debug("[UIPatch] TryGetData returned false. Exiting.");
                     return;
                 }
 
                 if (member == null || nameLabel == null)
                 {
-                    if (LifespanPlugin.Instance.Log.IsDebugEnabled) LifespanPlugin.Instance.Log.Debug("[UIPatch] Member or Label is null after TryGetData. Exiting.");
                     return;
                 }
 
                 if (AgingPatches.Tracker == null)
                 {
-                    if (LifespanPlugin.Instance.Log.IsDebugEnabled) LifespanPlugin.Instance.Log.Debug("[UIPatch] AgingPatches.Tracker is null. Exiting.");
                     return;
                 }
 
                 int ageWeeks = AgingPatches.Tracker.GetAgeWeeks(member);
                 int ageYears = ageWeeks / LifespanConstants.WeeksPerYear;
-                if (LifespanPlugin.Instance.Log.IsDebugEnabled) LifespanPlugin.Instance.Log.Debug($"[UIPatch] Calculated age for {member.firstName}: {ageYears} years ({ageWeeks} weeks).");
-
-                string currentText = nameLabel.text;
-                string ageSuffix = $" (Age: {ageYears})";
-                if (LifespanPlugin.Instance.Log.IsDebugEnabled) LifespanPlugin.Instance.Log.Debug($"[UIPatch] Current label text: '{currentText}'. Desired suffix: '{ageSuffix}'.");
-
-                if (currentText.EndsWith(ageSuffix)) 
-                {
-                    if (LifespanPlugin.Instance.Log.IsDebugEnabled) LifespanPlugin.Instance.Log.Debug("[UIPatch] Text already correct. Exiting.");
-                    return;
-                }
-
-                string newText = currentText;
-                if (currentText.Contains("(Age:")) 
-                {
-                    int parenIndex = currentText.LastIndexOf("(Age:");
-                    if(parenIndex > 0)
-                    {
-                        string baseName = currentText.Substring(0, parenIndex).Trim();
-                        newText = baseName + ageSuffix;
-                    }
-                }
-                else
-                {
-                    newText = currentText + ageSuffix;
-                }
-
-                if (LifespanPlugin.Instance.Log.IsDebugEnabled) LifespanPlugin.Instance.Log.Debug($"[UIPatch] Setting new text: '{newText}'.");
-                nameLabel.text = newText;
+                TooltipCache.TryApplyAge(__instance, ageYears);
             }
             catch (Exception ex)
             {

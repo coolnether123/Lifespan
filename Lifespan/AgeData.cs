@@ -26,35 +26,28 @@ namespace Lifespan
         public AgeDataSerializable ToSerializable()
         {
             var s = new AgeDataSerializable();
-            foreach (var kvp in familyMemberAges) s.ages.Add(new AgeEntry { id = kvp.Key, weeks = kvp.Value });
-            foreach (var kvp in externalCharacterAges) s.externalAges.Add(new AgeEntry { id = kvp.Key, weeks = kvp.Value });
-            foreach (var kvp in elderIllnesses) s.illnesses.Add(new IllnessEntry { id = kvp.Key, illnessIds = kvp.Value ?? new List<string>() });
-            foreach (var kvp in greyProfiles) s.greyProfiles.Add(new GreyProfileEntry { id = kvp.Key, profile = kvp.Value });
-            foreach (var kvp in developmentGenes) s.developmentGenes.Add(new DevelopmentGeneEntry { id = kvp.Key, gene = kvp.Value });
-            foreach (var kvp in onsetTiming) s.onsetData.Add(new OnsetEntry { id = kvp.Key, onsetWeeks = kvp.Value ?? new Dictionary<string, int>() });
-            foreach (var kvp in deceasedDeathDays) s.deathDays.Add(new AgeEntry { id = kvp.Key, weeks = kvp.Value });
-            foreach (var kvp in deceasedDeathAges) s.deathAges.Add(new AgeEntry { id = kvp.Key, weeks = kvp.Value });
-
-            foreach (var kvp in triggeredMilestones) s.triggeredMilestones.Add(new MilestoneEntry { id = kvp.Key, keys = new List<string>(kvp.Value ?? new HashSet<string>()) });
-            foreach (var kvp in lastBirthdayYear) s.lastBirthdays.Add(new BirthdayEntry { id = kvp.Key, year = kvp.Value });
-            foreach (var kvp in dialogueHistory) s.dialogueHistory.Add(new DialogueHistoryEntry { key = kvp.Key, hashes = new List<int>(kvp.Value ?? new HashSet<int>()) });
-            s.lastProcessedAgingWeek = lastProcessedAgingWeek;
-
+            s.CopyFrom(this);
             return s;
         }
 
         public static AgeData FromSerializable(AgeDataSerializable s)
         {
-            var data = new AgeData();
-            if (s == null) return data;
+            if (s == null) return new AgeData();
 
-            if (s.ages != null)
-                foreach (var entry in s.ages)
-                    if (entry != null) data.familyMemberAges[entry.id] = entry.weeks;
-
-            if (s.externalAges != null)
-                foreach (var entry in s.externalAges)
-                    if (entry != null) data.externalCharacterAges[entry.id] = entry.weeks;
+            var data = new AgeData
+            {
+                familyMemberAges = CreateIntDictionary(s.ages),
+                externalCharacterAges = CreateIntDictionary(s.externalAges),
+                elderIllnesses = new Dictionary<int, List<string>>(CountOrZero(s.illnesses)),
+                greyProfiles = new Dictionary<int, GreyProfile>(CountOrZero(s.greyProfiles)),
+                developmentGenes = new Dictionary<int, DevelopmentGene>(CountOrZero(s.developmentGenes)),
+                onsetTiming = new Dictionary<int, Dictionary<string, int>>(CountOrZero(s.onsetData)),
+                deceasedDeathDays = CreateIntDictionary(s.deathDays),
+                deceasedDeathAges = CreateIntDictionary(s.deathAges),
+                triggeredMilestones = new Dictionary<int, HashSet<string>>(CountOrZero(s.triggeredMilestones)),
+                lastBirthdayYear = new Dictionary<int, int>(CountOrZero(s.lastBirthdays)),
+                dialogueHistory = new Dictionary<string, HashSet<int>>(CountOrZero(s.dialogueHistory))
+            };
 
             if (s.illnesses != null)
                 foreach (var entry in s.illnesses)
@@ -95,6 +88,24 @@ namespace Lifespan
             data.lastProcessedAgingWeek = s.lastProcessedAgingWeek;
 
             return data;
+        }
+
+        private static Dictionary<int, int> CreateIntDictionary(List<AgeEntry> entries)
+        {
+            var result = new Dictionary<int, int>(CountOrZero(entries));
+            if (entries == null) return result;
+
+            foreach (var entry in entries)
+            {
+                if (entry != null) result[entry.id] = entry.weeks;
+            }
+
+            return result;
+        }
+
+        private static int CountOrZero<T>(List<T> list)
+        {
+            return list != null ? list.Count : 0;
         }
     }
 
@@ -154,6 +165,25 @@ namespace Lifespan
             CopyList(ref lastBirthdays, source.lastBirthdays);
             CopyList(ref dialogueHistory, source.dialogueHistory);
             lastProcessedAgingWeek = source.lastProcessedAgingWeek;
+        }
+
+        public void CopyFrom(AgeData data)
+        {
+            Clear();
+            if (data == null) return;
+
+            foreach (var kvp in data.familyMemberAges) ages.Add(new AgeEntry { id = kvp.Key, weeks = kvp.Value });
+            foreach (var kvp in data.externalCharacterAges) externalAges.Add(new AgeEntry { id = kvp.Key, weeks = kvp.Value });
+            foreach (var kvp in data.elderIllnesses) illnesses.Add(new IllnessEntry { id = kvp.Key, illnessIds = kvp.Value ?? new List<string>() });
+            foreach (var kvp in data.greyProfiles) greyProfiles.Add(new GreyProfileEntry { id = kvp.Key, profile = kvp.Value });
+            foreach (var kvp in data.developmentGenes) developmentGenes.Add(new DevelopmentGeneEntry { id = kvp.Key, gene = kvp.Value });
+            foreach (var kvp in data.onsetTiming) onsetData.Add(new OnsetEntry { id = kvp.Key, onsetWeeks = kvp.Value ?? new Dictionary<string, int>() });
+            foreach (var kvp in data.deceasedDeathDays) deathDays.Add(new AgeEntry { id = kvp.Key, weeks = kvp.Value });
+            foreach (var kvp in data.deceasedDeathAges) deathAges.Add(new AgeEntry { id = kvp.Key, weeks = kvp.Value });
+            foreach (var kvp in data.triggeredMilestones) triggeredMilestones.Add(new MilestoneEntry { id = kvp.Key, keys = new List<string>(kvp.Value ?? new HashSet<string>()) });
+            foreach (var kvp in data.lastBirthdayYear) lastBirthdays.Add(new BirthdayEntry { id = kvp.Key, year = kvp.Value });
+            foreach (var kvp in data.dialogueHistory) dialogueHistory.Add(new DialogueHistoryEntry { key = kvp.Key, hashes = new List<int>(kvp.Value ?? new HashSet<int>()) });
+            lastProcessedAgingWeek = data.lastProcessedAgingWeek;
         }
 
         public bool HasAnyData()

@@ -125,5 +125,24 @@ namespace Lifespan.Tests
             Assert.AreEqual(1, container.ages.Count);
             Assert.AreEqual(700, container.ages[0].weeks);
         }
+
+        [Test]
+        public void AgeDataSerializable_CopyFromRuntimeData_KeepsRegisteredListInstances()
+        {
+            var container = new AgeDataSerializable();
+            List<AgeEntry> originalAgesList = container.ages;
+            List<DialogueHistoryEntry> originalDialogueList = container.dialogueHistory;
+
+            var data = new AgeData();
+            data.familyMemberAges[7] = 700;
+            data.dialogueHistory["Birthday_7"] = new HashSet<int> { 42 };
+
+            container.CopyFrom(data);
+
+            Assert.AreSame(originalAgesList, container.ages);
+            Assert.AreSame(originalDialogueList, container.dialogueHistory);
+            Assert.AreEqual(700, container.ages[0].weeks);
+            Assert.AreEqual(42, container.dialogueHistory[0].hashes[0]);
+        }
     }
 }

@@ -42,11 +42,11 @@
       <Private>False</Private>
     </Reference>
     <Reference Include="ModAPI">
-      <HintPath>$(ShelteredModsRoot)\ModAPI.dll</HintPath>
+      <HintPath>$(ShelteredModApiRoot)\ModAPI.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="ShelteredAPI">
-      <HintPath>$(ShelteredModsRoot)\ShelteredAPI.dll</HintPath>
+      <HintPath>$(ShelteredApiRoot)\ShelteredAPI.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="UnityEngine">

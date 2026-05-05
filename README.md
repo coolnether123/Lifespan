@@ -29,12 +29,12 @@ The default configuration is tuned for "Fast Aging" to make generational gamepla
 - **Inter-Mod Support**: Built-in support for pregnancy mods to register newborns (starting at age 0) and manage their growth.
 
 ### Natural Development System
-Characters now grow and learn naturally over time based on a unique **Development Gene**:
+Characters now grow and learn naturally over time based on Lifespan's saved growth-potential profile:
 - **Child Growth**: Children have a high potential for learning (4x faster than adults) and can gain significant stats before adulthood.
 - **Adult Development**: Adults grow slower but steady.
 - **Spark Mechanic**: Happy characters (low stress) have a chance to experience a "Spark" — a breakthrough that grants double stat points instantly.
 - **Skill Fatigue**: Characters are encouraged to be well-rounded. Gaining a specific stat reduces the chance of gaining that same stat again immediately.
-- **Use It or Lose It**: Characters have a genetic potential cap. If they don't develop their skills before reaching the next life stage (e.g. becoming an Elder), that potential is lost forever.
+- **Use It or Lose It**: Characters have a growth-potential cap. If they don't develop their skills before reaching the next life stage (e.g. becoming an Elder), that potential is lost forever.
 
 ### Child-to-Adult Transition
 When a child reaches adulthood:
@@ -74,7 +74,7 @@ At the death risk threshold (default: 75 years):
 
 ## Configuration
 
-All settings are integrated into the in-game **Mod Manager UI** with:
+All settings are exposed through the shared ShelteredAPI 1.3 settings UI with:
 - **Simple View**: Core gameplay controls only.
 - **Advanced View**: Full tuning options and debug controls.
 
@@ -149,6 +149,13 @@ lifespanAPI.UpdateExternalCharacters(1);
 
 Saved external age records without a currently loaded `BaseCharacter` are preserved, but they are not bulk-aged or emitted through `OnCharacterAged` until a live character is registered again.
 
+## Ownership Boundaries
+
+- Lifespan owns aging, life-stage transitions, elder illness, natural death, and growth-potential timing.
+- Gene Manager owns trait and gene systems. Lifespan may read vanilla traits for aging effects, but it should not become the owner of trait assignment or gene management.
+- Family Expansion owns conception, pregnancy, birth, and postpartum handoff. Lifespan only consumes newborn/age integration calls.
+- Shared settings UI rendering is owned by ShelteredAPI 1.3. Lifespan only provides settings definitions.
+
 ## Events
 
 The mod publishes the following events for inter-mod communication:
@@ -169,7 +176,7 @@ ModEventBus.Subscribe<CharacterAgedUpArgs>("Lifespan.CharacterAgedUp", args =>
 
 ## Installation
 
-1. Ensure Sheltered ModAPI v1.1 is installed from [here](https://github.com/coolnether123/shelteredmodmanager/releases/tag/v1.1)
+1. Ensure Sheltered Mod Manager is installed with ModAPI/ShelteredAPI 1.3.
 2. Copy the `Lifespan` folder to `Sheltered/mods/`
 3. Enable the mod in the Mod Manager
 4. **Recommended**: Configure your preferred aging speed in the Settings menu before starting a long playthrough.
@@ -193,7 +200,7 @@ ModEventBus.Subscribe<CharacterAgedUpArgs>("Lifespan.CharacterAgedUp", args =>
 
 ## Credits
 
-Created using the Sheltered Mod Loader ModAPI v1.1
+Created for the Sheltered Mod Loader with ModAPI/ShelteredAPI 1.3.
 
 ## License
 

@@ -34,7 +34,7 @@ namespace Lifespan
 
         public void Save(AgeData data)
         {
-            _container.CopyFrom(data != null ? data.ToSerializable() : null);
+            _container.CopyFrom(data);
         }
 
         public void Clear()

@@ -64,6 +64,24 @@ namespace Lifespan.Tests
         }
 
         [Test]
+        public void GetStageForAgeYears_ClassifiesConfiguredThresholds()
+        {
+            _config.mobileAgeYears = 2;
+            _config.expeditionMinAgeAccompanied = 10;
+            _config.expeditionMinAgeSolo = 13;
+            _config.adultAgeYears = 18;
+            _config.elderAgeYears = 60;
+            _manager.RefreshSettings(_config);
+
+            Assert.AreEqual(ChildStage.Newborn, _manager.GetStageForAgeYears(1));
+            Assert.AreEqual(ChildStage.Child, _manager.GetStageForAgeYears(2));
+            Assert.AreEqual(ChildStage.PreTeen, _manager.GetStageForAgeYears(10));
+            Assert.AreEqual(ChildStage.Teen, _manager.GetStageForAgeYears(13));
+            Assert.AreEqual(ChildStage.Adult, _manager.GetStageForAgeYears(18));
+            Assert.AreEqual(ChildStage.Elder, _manager.GetStageForAgeYears(60));
+        }
+
+        [Test]
         [Ignore("Temporarily disabled to bypass stale DLL issues")]
         public void Newborn_IsImmobile_AndNeedsCare()
         {

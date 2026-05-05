@@ -36,21 +36,23 @@ namespace Lifespan
             if (!_config.enableChildDevelopment)
             {
                 var fallback = member.isChild ? ChildStage.Child : ChildStage.Adult;
-                _log.Debug($"[MANAGER] Development Disabled. Member isChild: {member.isChild} -> {fallback}");
+                if (_log.IsDebugEnabled) _log.Debug($"[MANAGER] Development Disabled. Member isChild: {member.isChild} -> {fallback}");
                 return fallback;
             }
 
-            int ageWeeks = _ageTracker.GetAgeWeeks(member);
-            int ageYears = ageWeeks / LifespanConstants.WeeksPerYear;
+            return GetStageForAgeYears(_ageTracker.GetAgeYears(member));
+        }
 
+        internal ChildStage GetStageForAgeYears(int ageYears)
+        {
             if (ageYears >= _config.adultAgeYears)
             {
                 var result = ageYears >= _config.elderAgeYears ? ChildStage.Elder : ChildStage.Adult;
-                _log.Debug($"[MANAGER] Adult check: AgeWeeks={ageWeeks}, Years={ageYears}, AdultThr={_config.adultAgeYears} -> {result}");
+                if (_log.IsDebugEnabled) _log.Debug($"[MANAGER] Adult check: Years={ageYears}, AdultThr={_config.adultAgeYears} -> {result}");
                 return result;
             }
             
-            _log.Debug($"[MANAGER] Child check: AgeWeeks={ageWeeks}, Years={ageYears}, MobileThr={_config.mobileAgeYears}");
+            if (_log.IsDebugEnabled) _log.Debug($"[MANAGER] Child check: Years={ageYears}, MobileThr={_config.mobileAgeYears}");
 
             if (ageYears >= _config.expeditionMinAgeSolo)
                 return ChildStage.Teen;
@@ -67,8 +69,7 @@ namespace Lifespan
         public bool CanMove(FamilyMember member)
         {
             if (!_config.enableChildDevelopment) return true;
-            ChildStage stage = GetStage(member);
-            return stage != ChildStage.Newborn;
+            return GetStage(member) != ChildStage.Newborn;
         }
 
         public bool CanDoJobs(FamilyMember member)

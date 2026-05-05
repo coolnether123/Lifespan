@@ -103,7 +103,7 @@ namespace Lifespan
                 _illnessState.AddIllness(member.GetId(), severe);
                 ApplyInitialEffect(member, severe);
 
-                string victimLine = _dialogueHelper.PickLine($"Flavor_{severe}", IllnessDialogue.GetFlavorOptions(severe));
+                string victimLine = GetFlavorDialogue(member, severe);
                 TriggerSpeech(member, victimLine, DialogueScheduler.Priority.Reactive, () => GetIllnesses(member).Contains(severe));
                 TriggerJournal($"Condition Worsened: {member.firstName} now has {GetIllnessName(severe)}.", DialogueScheduler.Priority.Reactive, () => GetIllnesses(member).Contains(severe));
                 TriggerObserverReactions(member, severe);
@@ -114,12 +114,18 @@ namespace Lifespan
         {
              int duration = (int)(_random.Range(_config.illnessStageMinYears * LifespanConstants.WeeksPerYear, _config.illnessStageMaxYears * LifespanConstants.WeeksPerYear));
              float modifier = 1.0f;
-             if (((float)member.health / member.maxHealth) < 0.5f) modifier -= 0.2f;
+             int maxHealth = Math.Max(1, member.maxHealth);
+             if (((float)member.health / maxHealth) < 0.5f) modifier -= 0.2f;
              if ((member.stats?.trauma?.Value ?? 0) > 50f) modifier -= 0.2f;
-             if (member.traits != null && member.traits.HasWeakness(Traits.Weakness.Lazy)) modifier -= 0.1f; 
+             if (HasWeakness(member, Traits.Weakness.Lazy)) modifier -= 0.1f; 
              if (member.BaseStats?.Dexterity?.Level >= 12) modifier += 0.2f;
 
              return currentWeek + Math.Max(4, (int)(duration * modifier));
+        }
+
+        private string GetFlavorDialogue(FamilyMember member, string illnessId)
+        {
+            return _dialogueHelper.PickLine($"Flavor_{illnessId}", IllnessDialogue.GetFlavorOptions(illnessId), member);
         }
 
         private void AcquireRandomIllness(FamilyMember member)
@@ -139,7 +145,7 @@ namespace Lifespan
                 _illnessState.SetOnsetWeek(member.GetId(), picked, CalculateNextStageWeek(member, _ageTracker.GetAgeWeeks(member)));
                 ApplyInitialEffect(member, picked);
                 
-                string flavor = _dialogueHelper.PickLine($"Flavor_{picked}", IllnessDialogue.GetFlavorOptions(picked));
+                string flavor = GetFlavorDialogue(member, picked);
                 TriggerSpeech(member, flavor, DialogueScheduler.Priority.Reactive, () => GetIllnesses(member).Contains(picked));
                 TriggerJournal($"{member.firstName} is showing signs of {GetIllnessName(picked)}.", DialogueScheduler.Priority.Reactive, () => GetIllnesses(member).Contains(picked));
             }
@@ -175,8 +181,36 @@ namespace Lifespan
 
         private void ApplyInitialEffect(FamilyMember member, string illnessId, bool silent = false)
         {
-            if (illnessId == ILLNESS_ARTHRITIS && member.traits != null && !member.traits.HasWeakness(Traits.Weakness.Lazy))
-                member.traits.AddWeakness(Traits.Weakness.Lazy, true);
+            if (illnessId == ILLNESS_ARTHRITIS && member.traits != null && !HasWeakness(member, Traits.Weakness.Lazy))
+                AddWeakness(member, Traits.Weakness.Lazy);
+        }
+
+        private bool HasWeakness(FamilyMember member, Traits.Weakness weakness)
+        {
+            if (member == null || member.traits == null) return false;
+
+            try
+            {
+                return member.traits.HasWeakness(weakness);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private void AddWeakness(FamilyMember member, Traits.Weakness weakness)
+        {
+            if (member == null || member.traits == null) return;
+
+            try
+            {
+                member.traits.AddWeakness(weakness, true);
+            }
+            catch (Exception ex)
+            {
+                if (Log.IsDebugEnabled) Log.Debug($"Failed to add weakness {weakness}: {ex.Message}");
+            }
         }
 
         private void ApplyOngoingEffects(FamilyMember member)

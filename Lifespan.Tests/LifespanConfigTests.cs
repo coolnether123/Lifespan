@@ -59,7 +59,7 @@ namespace Lifespan.Tests
             _config.ValidateAndClamp();
 
             // Assert
-            Assert.AreEqual(1, _config.adultAgeYears); // Min 1
+            Assert.AreEqual(18, _config.adultAgeYears); // Default child max requires adulthood at 18+
             Assert.AreEqual(1, _config.agingIntervalWeeks); // Min 1
             Assert.AreEqual(5.0f, _config.elderIllnessBaseChance); // Max 5.0
             Assert.AreEqual(0.1f, _config.deathProbabilityMultiplier); // Min 0.1
