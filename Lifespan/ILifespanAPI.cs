@@ -100,13 +100,25 @@ namespace Lifespan
         int GetCharacterAgeWeeks(BaseCharacter character);
 
         /// <summary>
-        /// Manually increments the age of an NPC (non-family member).
+        /// Gets live external characters registered with the aging API in this runtime.
+        /// Save records without a currently loaded character object are not included.
+        /// </summary>
+        List<BaseCharacter> GetTrackedExternalCharacters();
+
+        /// <summary>
+        /// Manually increments the age of a character.
         /// Useful for other mods managing their own lifecycle (e.g. pregnancy).
+        /// Returns the unchanged age when OnBeforeCharacterAged cancels the increment.
+        /// </summary>
+        int IncrementCharacterAge(BaseCharacter character, int weeks);
+
+        /// <summary>
+        /// Backward-compatible alias for IncrementCharacterAge.
         /// </summary>
         int IncrementNPCAge(BaseCharacter character, int weeks);
 
         /// <summary>
-        /// Fired when an NPC's age is explicitly incremented via IncrementNPCAge.
+        /// Fired after this API increments a concrete character's age.
         /// </summary>
         event System.Action<BaseCharacter, int> OnCharacterAged;
         
@@ -117,8 +129,8 @@ namespace Lifespan
         event System.Func<BaseCharacter, bool> OnBeforeCharacterAged;
 
         /// <summary>
-        /// Iterates through all tracked external characters (NPCs) and increments their age by the specified weeks.
-        /// This allows Faction mods to age their entire population in one call, while respecting OnBeforeCharacterAged cancellation.
+        /// Iterates through all live tracked external characters (NPCs) and increments their age by the specified weeks.
+        /// This respects OnBeforeCharacterAged cancellation and only fires OnCharacterAged with a non-null character.
         /// </summary>
         void UpdateExternalCharacters(int weeks);
 

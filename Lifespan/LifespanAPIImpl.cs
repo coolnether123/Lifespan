@@ -1,5 +1,6 @@
 using ModAPI.Core;
 using ModAPI.Util;
+using System;
 using System.Collections.Generic;
 
 namespace Lifespan
@@ -41,19 +42,18 @@ namespace Lifespan
         // Generic / NPC API Implementation
         public int GenerateAgeForNPC(BaseCharacter character, AgeContext context) => _ageTracker.GenerateAgeForContext(character, context);
         public int GetCharacterAgeWeeks(BaseCharacter character) => _ageTracker.GetAgeWeeks(character);
+        public List<BaseCharacter> GetTrackedExternalCharacters() => _ageTracker.GetTrackedExternalCharacters();
         
-        public int IncrementNPCAge(BaseCharacter character, int weeks)
+        public int IncrementCharacterAge(BaseCharacter character, int weeks)
         {
-            if (character == null) return 0;
-            
-            int current = _ageTracker.GetAgeWeeks(character);
-            int newAge = current + weeks;
-            
-            _ageTracker.SetExternalCharacterAge(character.GetId(), newAge);
-            OnCharacterAged?.Invoke(character, newAge);
-            
+            if (object.ReferenceEquals(character, null)) return 0;
+
+            int newAge;
+            TryIncrementCharacterAge(character, weeks, true, out newAge);
             return newAge;
         }
+
+        public int IncrementNPCAge(BaseCharacter character, int weeks) => IncrementCharacterAge(character, weeks);
 
         public event System.Action<BaseCharacter, int> OnCharacterAged;
         public event System.Func<BaseCharacter, bool> OnBeforeCharacterAged;
@@ -64,10 +64,15 @@ namespace Lifespan
              
              foreach(System.Func<BaseCharacter, bool> handler in OnBeforeCharacterAged.GetInvocationList())
              {
-                 // If any handler returns FALSE (meaning "don't proceed"), we cancel.
-                 // Wait, standard Func delegates return a value. 
-                 // The API spec said "Return FALSE to cancel".
-                 if (!handler(character)) return true; // Cancelled
+                 try
+                 {
+                     if (!handler(character)) return true;
+                 }
+                 catch (Exception ex)
+                 {
+                     _log.Warn($"OnBeforeCharacterAged handler failed for character {GetCharacterIdForLog(character)}; cancelling aging for safety. Error: {ex.Message}");
+                     return true;
+                 }
              }
              return false;
         }
@@ -77,26 +82,58 @@ namespace Lifespan
         /// </summary>
         public void UpdateExternalCharacters(int weeks)
         {
-            // We need a way to get all tracked NPCs from AgeTracker
-            // Ideally AgeTracker should expose a method for this safe iteration
-            var externalIds = _ageTracker.GetAllTrackedExternalIds();
-            
-            foreach(int id in externalIds)
+            var characters = _ageTracker.GetTrackedExternalCharacters();
+
+            if (characters.Count == 0 && _log.IsDebugEnabled && _ageTracker.GetAllTrackedExternalIds().Count > 0)
             {
-                // We don't have the BaseCharacter object here easily unless we track it or resolve it.
-                // However, for pure data aging, we can update the ID-based record.
-                // IF we had the object, we could invoke OnBeforeCharacterAged.
-                // Limitation: Without the object, we can't run the detailed cancellation check efficiently 
-                // unless we change how we store external characters (ID -> Object ref).
-                // For now, we update the data.
-                
-                int currentAge = _ageTracker.GetAgeWeeks(id);
-                int newAge = currentAge + weeks;
-                _ageTracker.SetExternalCharacterAge(id, newAge);
-                
-                // Note: OnCharacterAged event typically desires the object. 
-                // Passing null implies we only updated data for an off-screen entity.
-                OnCharacterAged?.Invoke(null, newAge);
+                _log.Debug("[LifespanAPI] External age records exist, but no live external characters are registered for this runtime.");
+            }
+
+            foreach(BaseCharacter character in characters)
+            {
+                int ignored;
+                TryIncrementCharacterAge(character, weeks, true, out ignored);
+            }
+        }
+
+        private bool TryIncrementCharacterAge(BaseCharacter character, int weeks, bool respectCancellation, out int newAge)
+        {
+            newAge = 0;
+            if (object.ReferenceEquals(character, null)) return false;
+
+            int current = _ageTracker.GetAgeWeeks(character);
+            newAge = current;
+
+            if (respectCancellation && ShouldCancelAging(character))
+            {
+                return false;
+            }
+
+            newAge = Math.Max(0, current + weeks);
+            if (character is FamilyMember familyMember)
+            {
+                _ageTracker.SetAgeWeeks(familyMember, newAge);
+            }
+            else
+            {
+                _ageTracker.SetExternalCharacterAge(character, newAge);
+            }
+
+            OnCharacterAged?.Invoke(character, newAge);
+            return true;
+        }
+
+        private static string GetCharacterIdForLog(BaseCharacter character)
+        {
+            if (object.ReferenceEquals(character, null)) return "<null>";
+
+            try
+            {
+                return character.GetId().ToString();
+            }
+            catch
+            {
+                return "<unknown>";
             }
         }
 
@@ -176,14 +213,21 @@ namespace Lifespan
                     }
                 }
             }
-            // FUTURE: Iterate over external/tracked NPCs if AgeTracker exposes them
+            foreach (BaseCharacter external in _ageTracker.GetTrackedExternalCharacters())
+            {
+                if (!object.ReferenceEquals(external, null) && (filter == null || filter(external)))
+                {
+                    count++;
+                }
+            }
+
             return count;
         }
 
         public int GetPopulationInAgeRange(int minAgeYears, int maxAgeYears)
         {
             int count = 0;
-             if (FamilyManager.Instance != null)
+            if (FamilyManager.Instance != null)
             {
                 var members = FamilyManager.Instance.GetAllFamilyMembers();
                 if (members != null)
@@ -201,6 +245,18 @@ namespace Lifespan
                     }
                 }
             }
+
+            foreach (BaseCharacter external in _ageTracker.GetTrackedExternalCharacters())
+            {
+                if (object.ReferenceEquals(external, null)) continue;
+
+                int age = _ageTracker.GetAgeWeeks(external) / LifespanConstants.WeeksPerYear;
+                if (age >= minAgeYears && age <= maxAgeYears)
+                {
+                    count++;
+                }
+            }
+
             return count;
         }
 

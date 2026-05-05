@@ -21,6 +21,7 @@ namespace Lifespan
         private readonly ModRandomStream _random;
         private readonly IAgeDataStore _dataStore;
         private readonly LifespanState _state;
+        private readonly Dictionary<int, BaseCharacter> _externalCharacterRefs;
         private bool _isDataHydrated;
         private bool _allowFreshInitialization;
         
@@ -55,6 +56,7 @@ namespace Lifespan
             _state = state ?? new LifespanState();
             _random = random;
             _dataStore = dataStore;
+            _externalCharacterRefs = new Dictionary<int, BaseCharacter>();
             _isDataHydrated = false;
             _allowFreshInitialization = false;
         }
@@ -68,6 +70,7 @@ namespace Lifespan
         {
             Log.Debug("Resetting tracking data for fresh session.");
             _state.Replace(new AgeData());
+            _externalCharacterRefs.Clear();
             _isDataHydrated = false;
             _allowFreshInitialization = false;
 
@@ -198,6 +201,7 @@ namespace Lifespan
             }
             else
             {
+                TrackExternalCharacter(character);
                 _state.Ages.SetExternalAgeWeeks(id, ageWeeks);
             }
             
@@ -344,6 +348,7 @@ namespace Lifespan
             int ageWeeks;
             if (_state.Ages.TryGetExternalAgeWeeks(id, out ageWeeks))
             {
+                TrackExternalCharacter(character);
                 return ageWeeks;
             }
 
@@ -356,6 +361,17 @@ namespace Lifespan
         public void SetExternalCharacterAge(int id, int ageWeeks)
         {
             _state.Ages.SetExternalAgeWeeks(id, ageWeeks);
+        }
+
+        /// <summary>
+        /// Manually update NPC age and keep the live object available for API events.
+        /// </summary>
+        public void SetExternalCharacterAge(BaseCharacter character, int ageWeeks)
+        {
+            if (object.ReferenceEquals(character, null)) return;
+
+            TrackExternalCharacter(character);
+            SetExternalCharacterAge(character.GetId(), ageWeeks);
         }
 
         /// <summary>
@@ -393,6 +409,7 @@ namespace Lifespan
             }
 
             int id = character.GetId();
+            TrackExternalCharacter(character);
             _state.Ages.SetExternalAgeWeeks(id, weeks);
         }
 
@@ -402,6 +419,45 @@ namespace Lifespan
         public List<int> GetAllTrackedExternalIds()
         {
             return _state.Ages.GetAllExternalIds();
+        }
+
+        /// <summary>
+        /// Returns live external characters currently known to the runtime API.
+        /// Saved external age records without a live object are intentionally excluded.
+        /// </summary>
+        public List<BaseCharacter> GetTrackedExternalCharacters()
+        {
+            List<BaseCharacter> characters = new List<BaseCharacter>();
+            List<int> staleIds = new List<int>();
+
+            foreach (var kvp in _externalCharacterRefs)
+            {
+                BaseCharacter character = kvp.Value;
+                if (object.ReferenceEquals(character, null))
+                {
+                    staleIds.Add(kvp.Key);
+                    continue;
+                }
+
+                characters.Add(character);
+            }
+
+            foreach (int id in staleIds)
+            {
+                _externalCharacterRefs.Remove(id);
+            }
+
+            return characters;
+        }
+
+        private void TrackExternalCharacter(BaseCharacter character)
+        {
+            if (object.ReferenceEquals(character, null) || character is FamilyMember)
+            {
+                return;
+            }
+
+            _externalCharacterRefs[character.GetId()] = character;
         }
 
         /// <summary>

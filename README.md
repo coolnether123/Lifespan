@@ -126,23 +126,44 @@ if (ModAPIRegistry.TryGetAPI<ILifespanAPI>("com.lifespan.api", out var lifespanA
 }
 ```
 
+### External Character Aging
+
+External characters are tracked with both saved age records and live runtime references. Use `GenerateAgeForNPC` or `SetCharacterAgeWeeks(BaseCharacter, int)` when an NPC is created so later bulk aging can access the concrete character object.
+
+```csharp
+lifespanAPI.GenerateAgeForNPC(visitor, AgeContext.NPC_Trader);
+
+lifespanAPI.OnBeforeCharacterAged += character =>
+{
+    // Return false to skip this character for this aging pass.
+    return !IsInCryostasis(character);
+};
+
+lifespanAPI.OnCharacterAged += (character, newAgeWeeks) =>
+{
+    // character is always the concrete character aged by this API event.
+};
+
+lifespanAPI.UpdateExternalCharacters(1);
+```
+
+Saved external age records without a currently loaded `BaseCharacter` are preserved, but they are not bulk-aged or emitted through `OnCharacterAged` until a live character is registered again.
+
 ## Events
 
 The mod publishes the following events for inter-mod communication:
 
 - `Lifespan.CharacterAgedUp` - Weekly age update
-- `Lifespan.BecameAdult` - Child became adult
-- `Lifespan.BecameElder` - Reached elder threshold
-- `Lifespan.ElderIllnessAcquired` - Acquired an age-related illness
-- `Lifespan.DiedOfOldAge` - Died from old age
+- `Lifespan.CharacterAgeGenerated` - Age generated for a family member or external character
+- `Lifespan.AgeInitialized` - Family age initialized for the first time
 
 ### Example Event Subscription:
 ```csharp
 using ModAPI.Events;
 
-ModEventBus.Subscribe<BecameAdultEventArgs>("Lifespan.BecameAdult", args =>
+ModEventBus.Subscribe<CharacterAgedUpArgs>("Lifespan.CharacterAgedUp", args =>
 {
-    MMLog.Info($"Character {args.FamilyMemberId} became an adult at age {args.AgeYears}");
+    MMLog.Info($"Character {args.FamilyMemberId} aged to {args.NewAgeWeeks / 52} years");
 });
 ```
 

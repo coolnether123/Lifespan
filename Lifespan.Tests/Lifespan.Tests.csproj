@@ -5,6 +5,9 @@
     <IsPackable>false</IsPackable>
     <RootNamespace>Lifespan.Tests</RootNamespace>
     <AssemblyName>Lifespan.Tests</AssemblyName>
+    <ShelteredSmmRoot Condition="'$(ShelteredSmmRoot)' == ''">D:\SteamLibrary\steamapps\common\Sheltered\SMM</ShelteredSmmRoot>
+    <ShelteredModsRoot Condition="'$(ShelteredModsRoot)' == ''">$(ShelteredSmmRoot)</ShelteredModsRoot>
+    <ShelteredManagedRoot Condition="'$(ShelteredManagedRoot)' == ''">D:\SteamLibrary\steamapps\common\Sheltered\Sheltered_Data\Managed</ShelteredManagedRoot>
   </PropertyGroup>
 
   <ItemGroup>
@@ -20,19 +23,23 @@
 
   <ItemGroup>
     <Reference Include="0Harmony">
-      <HintPath>D:\SteamLibrary\steamapps\common\Sheltered\SMM\bin\0Harmony.dll</HintPath>
+      <HintPath>$(ShelteredSmmRoot)\bin\0Harmony.dll</HintPath>
       <Private>True</Private>
     </Reference>
     <Reference Include="Assembly-CSharp">
-      <HintPath>D:\SteamLibrary\steamapps\common\Sheltered\Sheltered_Data\Managed\Assembly-CSharp.dll</HintPath>
+      <HintPath>$(ShelteredManagedRoot)\Assembly-CSharp.dll</HintPath>
       <Private>True</Private>
     </Reference>
     <Reference Include="ModAPI">
-      <HintPath>D:\SteamLibrary\steamapps\common\Sheltered\SMM\ModAPI.dll</HintPath>
+      <HintPath>$(ShelteredModsRoot)\ModAPI.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="ShelteredAPI">
+      <HintPath>$(ShelteredModsRoot)\ShelteredAPI.dll</HintPath>
       <Private>True</Private>
     </Reference>
     <Reference Include="UnityEngine">
-      <HintPath>D:\SteamLibrary\steamapps\common\Sheltered\Sheltered_Data\Managed\UnityEngine.dll</HintPath>
+      <HintPath>$(ShelteredManagedRoot)\UnityEngine.dll</HintPath>
       <Private>True</Private>
     </Reference>
   </ItemGroup>
