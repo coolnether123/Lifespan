@@ -2,6 +2,7 @@ using NUnit.Framework;
 using Lifespan;
 using ModAPI.Core;
 using Moq;
+using System.Collections.Generic;
 
 namespace Lifespan.Tests
 {
@@ -77,6 +78,52 @@ namespace Lifespan.Tests
             _tracker.SetAgeWeeks(member, 10 * 52);
             int tenYearResult = _tracker.IncrementAge(member, 52);
             Assert.AreEqual((10 * 52) + 52, tenYearResult);
+        }
+
+        [Test]
+        public void AgeData_RoundTrip_PreservesExistingSaveSchemaFields()
+        {
+            var saved = new AgeDataSerializable();
+            saved.ages.Add(new AgeEntry { id = 1, weeks = 520 });
+            saved.externalAges.Add(new AgeEntry { id = 90, weeks = 2080 });
+            saved.illnesses.Add(new IllnessEntry { id = 1, illnessIds = new List<string> { ElderIllnessManager.ILLNESS_MILD_HEART } });
+            saved.onsetData.Add(new OnsetEntry { id = 1, onsetWeeks = new Dictionary<string, int> { { ElderIllnessManager.ILLNESS_MILD_HEART, 600 } } });
+            saved.deathDays.Add(new AgeEntry { id = 2, weeks = 125 });
+            saved.deathAges.Add(new AgeEntry { id = 2, weeks = 4200 });
+            saved.triggeredMilestones.Add(new MilestoneEntry { id = 1, keys = new List<string> { "Milestone_Adult" } });
+            saved.lastBirthdays.Add(new BirthdayEntry { id = 1, year = 10 });
+            saved.dialogueHistory.Add(new DialogueHistoryEntry { key = "Birthday_1", hashes = new List<int> { 1234 } });
+            saved.lastProcessedAgingWeek = 44;
+
+            AgeData data = AgeData.FromSerializable(saved);
+            AgeDataSerializable roundTrip = data.ToSerializable();
+
+            Assert.AreEqual(520, roundTrip.ages[0].weeks);
+            Assert.AreEqual(2080, roundTrip.externalAges[0].weeks);
+            Assert.AreEqual(ElderIllnessManager.ILLNESS_MILD_HEART, roundTrip.illnesses[0].illnessIds[0]);
+            Assert.AreEqual(600, roundTrip.onsetData[0].onsetWeeks[ElderIllnessManager.ILLNESS_MILD_HEART]);
+            Assert.AreEqual(125, roundTrip.deathDays[0].weeks);
+            Assert.AreEqual(4200, roundTrip.deathAges[0].weeks);
+            Assert.AreEqual("Milestone_Adult", roundTrip.triggeredMilestones[0].keys[0]);
+            Assert.AreEqual(10, roundTrip.lastBirthdays[0].year);
+            Assert.AreEqual(1234, roundTrip.dialogueHistory[0].hashes[0]);
+            Assert.AreEqual(44, roundTrip.lastProcessedAgingWeek);
+        }
+
+        [Test]
+        public void AgeDataSerializable_CopyFrom_KeepsRegisteredListInstances()
+        {
+            var container = new AgeDataSerializable();
+            List<AgeEntry> originalAgesList = container.ages;
+
+            var source = new AgeDataSerializable();
+            source.ages.Add(new AgeEntry { id = 7, weeks = 700 });
+
+            container.CopyFrom(source);
+
+            Assert.AreSame(originalAgesList, container.ages);
+            Assert.AreEqual(1, container.ages.Count);
+            Assert.AreEqual(700, container.ages[0].weeks);
         }
     }
 }

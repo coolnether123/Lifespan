@@ -18,10 +18,9 @@ namespace Lifespan
     {
         private readonly LifespanConfig _config;
         private readonly IModLogger _log;
-        private readonly IPluginContext _ctx;
         private readonly ModRandomStream _random;
+        private readonly IAgeDataStore _dataStore;
         private AgeData _currentAgeData;
-        private AgeDataSerializable _saveContainer; 
         private bool _isDataHydrated;
         private bool _allowFreshInitialization;
         
@@ -40,20 +39,19 @@ namespace Lifespan
         /// <param name="config">Lifespan configuration settings.</param>
         /// <param name="random">Seeded random stream for deterministic age generation.</param>
         public AgeTracker(IPluginContext ctx, LifespanConfig config, ModRandomStream random)
+            : this(ctx, config, random, new AgeDataStore(ctx))
         {
-            _ctx = ctx;
+        }
+
+        internal AgeTracker(IPluginContext ctx, LifespanConfig config, ModRandomStream random, IAgeDataStore dataStore)
+        {
             _config = config;
             _log = ctx.Log;
             _currentAgeData = new AgeData();
             _random = random;
-            
-            // Register for isolated per-mod save data tagging.
-            // This ensures data is specific to this mod and won't collide with others.
-            _saveContainer = new AgeDataSerializable();
-            _ctx.SaveSystem.RegisterModData("LifeSpan.AgeData", _saveContainer);
+            _dataStore = dataStore;
             _isDataHydrated = false;
             _allowFreshInitialization = false;
-            Log.Debug("[AgeTracker] Save container registered: LifeSpan.AgeData");
         }
 
         /// <summary>
@@ -483,25 +481,9 @@ namespace Lifespan
                 }
 
                 SyncWithFamilyManager();
+                _dataStore.Save(_currentAgeData);
 
-                // Convert current model to serializable format
-                var freshData = _currentAgeData.ToSerializable();
-                
-                // Deep-copy to the registered container
-                _saveContainer.ages = freshData.ages;
-                _saveContainer.externalAges = freshData.externalAges;
-                _saveContainer.illnesses = freshData.illnesses;
-                _saveContainer.greyProfiles = freshData.greyProfiles;
-                _saveContainer.developmentGenes = freshData.developmentGenes;
-                _saveContainer.onsetData = freshData.onsetData;
-                _saveContainer.deathDays = freshData.deathDays;
-                _saveContainer.deathAges = freshData.deathAges;
-                _saveContainer.triggeredMilestones = freshData.triggeredMilestones;
-                _saveContainer.lastBirthdays = freshData.lastBirthdays;
-                _saveContainer.dialogueHistory = freshData.dialogueHistory;
-                _saveContainer.lastProcessedAgingWeek = freshData.lastProcessedAgingWeek;
-
-                if (Log.IsDebugEnabled) Log.Debug($"Synced {freshData.ages.Count} members and {freshData.externalAges.Count} NPCs to save container.");
+                if (Log.IsDebugEnabled) Log.Debug($"Synced {_currentAgeData.familyMemberAges.Count} members and {_currentAgeData.externalCharacterAges.Count} NPCs to save container.");
             }
             catch (Exception ex)
             {
@@ -511,19 +493,7 @@ namespace Lifespan
 
         private void ClearSaveContainer()
         {
-            if (_saveContainer == null) return;
-            _saveContainer.ages.Clear();
-            _saveContainer.externalAges.Clear();
-            _saveContainer.illnesses.Clear();
-            _saveContainer.greyProfiles.Clear();
-            _saveContainer.developmentGenes.Clear();
-            _saveContainer.onsetData.Clear();
-            _saveContainer.deathDays.Clear();
-            _saveContainer.deathAges.Clear();
-            _saveContainer.triggeredMilestones.Clear();
-            _saveContainer.lastBirthdays.Clear();
-            _saveContainer.dialogueHistory.Clear();
-            _saveContainer.lastProcessedAgingWeek = WeeklyAgingPolicy.NoProcessedWeek;
+            _dataStore.Clear();
         }
 
         private void SyncWithFamilyManager()
@@ -550,9 +520,9 @@ namespace Lifespan
             {
                 _allowFreshInitialization = false;
 
-                if (_saveContainer != null && (_saveContainer.ages.Count > 0 || _saveContainer.externalAges.Count > 0))
+                if (_dataStore.HasSavedData)
                 {
-                    _currentAgeData = AgeData.FromSerializable(_saveContainer);
+                    _currentAgeData = _dataStore.Load();
                     Log.Info($"[AgeTracker] Hydrated from v1.2 container. Members: {_currentAgeData.familyMemberAges.Count}, External: {_currentAgeData.externalCharacterAges.Count}.");
                 }
                 else
@@ -831,95 +801,4 @@ namespace Lifespan
         public Dictionary<string, HashSet<int>> GetDialogueHistory() => _currentAgeData.dialogueHistory;
     }
 
-    /// <summary>
-    /// Runtime model for age tracking. Converted to/from AgeDataSerializable for storage.
-    /// </summary>
-    [Serializable]
-    public class AgeData
-    {
-        public Dictionary<int, int> familyMemberAges = new Dictionary<int, int>();
-        public Dictionary<int, int> externalCharacterAges = new Dictionary<int, int>();
-        public Dictionary<int, List<string>> elderIllnesses = new Dictionary<int, List<string>>();
-        public Dictionary<int, GreyProfile> greyProfiles = new Dictionary<int, GreyProfile>();
-        public Dictionary<int, DevelopmentGene> developmentGenes = new Dictionary<int, DevelopmentGene>();
-        public Dictionary<int, Dictionary<string, int>> onsetTiming = new Dictionary<int, Dictionary<string, int>>();
-        public Dictionary<int, HashSet<string>> triggeredMilestones = new Dictionary<int, HashSet<string>>();
-        public Dictionary<int, int> lastBirthdayYear = new Dictionary<int, int>();
-        public Dictionary<string, HashSet<int>> dialogueHistory = new Dictionary<string, HashSet<int>>();
-        public int lastProcessedAgingWeek = WeeklyAgingPolicy.NoProcessedWeek;
-
-        public Dictionary<int, int> deceasedDeathDays = new Dictionary<int, int>();
-        public Dictionary<int, int> deceasedDeathAges = new Dictionary<int, int>();
-
-        public AgeDataSerializable ToSerializable()
-        {
-            var s = new AgeDataSerializable();
-            foreach (var kvp in familyMemberAges) s.ages.Add(new AgeEntry { id = kvp.Key, weeks = kvp.Value });
-            foreach (var kvp in externalCharacterAges) s.externalAges.Add(new AgeEntry { id = kvp.Key, weeks = kvp.Value });
-            foreach (var kvp in elderIllnesses) s.illnesses.Add(new IllnessEntry { id = kvp.Key, illnessIds = kvp.Value });
-            foreach (var kvp in greyProfiles) s.greyProfiles.Add(new GreyProfileEntry { id = kvp.Key, profile = kvp.Value });
-            foreach (var kvp in developmentGenes) s.developmentGenes.Add(new DevelopmentGeneEntry { id = kvp.Key, gene = kvp.Value });
-            foreach (var kvp in onsetTiming) s.onsetData.Add(new OnsetEntry { id = kvp.Key, onsetWeeks = kvp.Value });
-            foreach (var kvp in deceasedDeathDays) s.deathDays.Add(new AgeEntry { id = kvp.Key, weeks = kvp.Value });
-            foreach (var kvp in deceasedDeathAges) s.deathAges.Add(new AgeEntry { id = kvp.Key, weeks = kvp.Value });
-            
-            foreach (var kvp in triggeredMilestones) s.triggeredMilestones.Add(new MilestoneEntry { id = kvp.Key, keys = new List<string>(kvp.Value) });
-            foreach (var kvp in lastBirthdayYear) s.lastBirthdays.Add(new BirthdayEntry { id = kvp.Key, year = kvp.Value });
-            foreach (var kvp in dialogueHistory) s.dialogueHistory.Add(new DialogueHistoryEntry { key = kvp.Key, hashes = new List<int>(kvp.Value) });
-            s.lastProcessedAgingWeek = lastProcessedAgingWeek;
-            
-            return s;
-        }
-
-        public static AgeData FromSerializable(AgeDataSerializable s)
-        {
-            var data = new AgeData();
-            if (s == null) return data;
-            foreach (var entry in s.ages) data.familyMemberAges[entry.id] = entry.weeks;
-            foreach (var entry in s.externalAges) data.externalCharacterAges[entry.id] = entry.weeks;
-            foreach (var entry in s.illnesses) data.elderIllnesses[entry.id] = entry.illnessIds;
-            foreach (var entry in s.greyProfiles) data.greyProfiles[entry.id] = entry.profile;
-            foreach (var entry in s.developmentGenes) data.developmentGenes[entry.id] = entry.gene;
-            foreach (var entry in s.onsetData) data.onsetTiming[entry.id] = entry.onsetWeeks;
-            foreach (var entry in s.deathDays) data.deceasedDeathDays[entry.id] = entry.weeks;
-            foreach (var entry in s.deathAges) data.deceasedDeathAges[entry.id] = entry.weeks;
-            
-            if (s.triggeredMilestones != null) foreach (var entry in s.triggeredMilestones) data.triggeredMilestones[entry.id] = new HashSet<string>(entry.keys);
-            if (s.lastBirthdays != null) foreach (var entry in s.lastBirthdays) data.lastBirthdayYear[entry.id] = entry.year;
-            if (s.dialogueHistory != null) foreach (var entry in s.dialogueHistory) data.dialogueHistory[entry.key] = new HashSet<int>(entry.hashes);
-            data.lastProcessedAgingWeek = s.lastProcessedAgingWeek;
-            
-            return data;
-        }
-    }
-
-    /// <summary>
-    /// Pure data transfer object (DTO) for Serialization. 
-    /// Keeps data flat and type-safe for the Save System.
-    /// </summary>
-    [Serializable]
-    public class AgeDataSerializable
-    {
-        public List<AgeEntry> ages = new List<AgeEntry>();
-        public List<AgeEntry> externalAges = new List<AgeEntry>();
-        public List<IllnessEntry> illnesses = new List<IllnessEntry>();
-        public List<GreyProfileEntry> greyProfiles = new List<GreyProfileEntry>();
-        public List<DevelopmentGeneEntry> developmentGenes = new List<DevelopmentGeneEntry>();
-        public List<OnsetEntry> onsetData = new List<OnsetEntry>();
-        public List<AgeEntry> deathDays = new List<AgeEntry>();
-        public List<AgeEntry> deathAges = new List<AgeEntry>();
-        public List<MilestoneEntry> triggeredMilestones = new List<MilestoneEntry>();
-        public List<BirthdayEntry> lastBirthdays = new List<BirthdayEntry>();
-        public List<DialogueHistoryEntry> dialogueHistory = new List<DialogueHistoryEntry>();
-        public int lastProcessedAgingWeek = WeeklyAgingPolicy.NoProcessedWeek;
-    }
-
-    [Serializable] public class MilestoneEntry { public int id; public List<string> keys = new List<string>(); }
-    [Serializable] public class BirthdayEntry { public int id; public int year; }
-    [Serializable] public class DialogueHistoryEntry { public string key; public List<int> hashes = new List<int>(); }
-    [Serializable] public class AgeEntry { public int id; public int weeks; }
-    [Serializable] public class IllnessEntry { public int id; public List<string> illnessIds = new List<string>(); }
-    [Serializable] public class GreyProfile { public float[] OriginalColor; public GreyingGene Gene; public int StartAgeWeeks; public int DurationWeeks; }
-    [Serializable] public class GreyProfileEntry { public int id; public GreyProfile profile; }
-    [Serializable] public class OnsetEntry { public int id; public Dictionary<string, int> onsetWeeks = new Dictionary<string, int>(); }
 }
