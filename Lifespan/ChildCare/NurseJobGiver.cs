@@ -1,7 +1,6 @@
 using ModAPI.Core;
 using UnityEngine;
 using System.Collections.Generic;
-using System.Linq;
 
 namespace Lifespan
 {
@@ -40,11 +39,15 @@ namespace Lifespan
             var members = FamilyManager.Instance.GetAllFamilyMembers();
             if (members == null) return;
 
+            HashSet<int> childrenAlreadyBeingFed = FindChildrenAlreadyBeingFed(members);
+            HashSet<int> activeMemberIds = new HashSet<int>();
+
             foreach (var child in members)
             {
                 if (child == null || child.isDead || ExpeditionStateHelper.IsDepartingOrAway(child)) continue;
+                activeMemberIds.Add(child.GetId());
 
-                if (_devManager.NeedsFeeding(child))
+                if (_devManager.NeedsFeeding(child) && child.stats != null && child.stats.hunger != null)
                 {
                     // Check hunger (0..100)
                     float hunger = child.stats.hunger.Value;
@@ -57,19 +60,22 @@ namespace Lifespan
                         }
 
                         // Check if already being fed
-                        if (IsBeingFed(child)) continue;
+                        if (childrenAlreadyBeingFed.Contains(child.GetId())) continue;
 
                         // Find nurse
-                        FamilyMember nurse = FindNurse();
+                        FamilyMember nurse = FindNurse(members);
                         if (nurse != null)
                         {
                             Job_FeedChild job = new Job_FeedChild(nurse, child);
                             nurse.job_queue.AddJob(job);
+                            childrenAlreadyBeingFed.Add(child.GetId());
                             _ctx.Log.Info($"[Nurse] Assigned {nurse.firstName} to feed {child.firstName} (Hunger: {hunger:F0}).");
                         }
                     }
                 }
             }
+
+            CleanupDialogueTimes(activeMemberIds);
         }
 
         private void ProcessBabyDialogue(FamilyMember child, float hunger)
@@ -100,54 +106,35 @@ namespace Lifespan
             return ageYears >= 0 && ageYears <= 2;
         }
 
-        private bool IsBeingFed(FamilyMember child)
+        private HashSet<int> FindChildrenAlreadyBeingFed(List<FamilyMember> members)
         {
-            var members = FamilyManager.Instance.GetAllFamilyMembers();
+            HashSet<int> result = new HashSet<int>();
+            if (members == null) return result;
+
             foreach (var m in members)
             {
-                if (m.job_queue == null) continue;
+                if (m == null || m.job_queue == null) continue;
 
-                foreach(var job in GetJobs(m))
+                for (int i = 0; i < m.job_queue.size; i++)
                 {
+                    Job job = m.job_queue.GetAt(i);
                     if (job is Job_FeedChild feedJob)
                     {
-                        // Use Traverse to peek at the private _child field to see if it matches
                         FamilyMember target = HarmonyLib.Traverse.Create(feedJob).Field("_child").GetValue<FamilyMember>();
-                        if (target == child)
+                        if (target != null)
                         {
-                            return true;
+                            result.Add(target.GetId());
                         }
                     }
                 }
             }
-            return false;
+            return result;
         }
 
-        private IEnumerable<Job> GetJobs(FamilyMember m)
-        {
-            if (m.job_queue == null) yield break;
-            
-            // Check current active job
-            Job current = m.job_queue.GetCurrent();
-            if (current != null) yield return current;
-
-            // Check queued jobs
-            // m.job_queue.jobs is private, so we use reflection to iterate the rest of the queue
-            List<Job> queueParams = HarmonyLib.Traverse.Create(m.job_queue).Field("jobs").GetValue<List<Job>>();
-            if (queueParams != null)
-            {
-                // Skip the first one if it's the same as 'current', otherwise just yield all
-                foreach(var j in queueParams)
-                {
-                   if (j != current) yield return j;
-                }
-            }
-        }
-
-        private FamilyMember FindNurse()
+        private FamilyMember FindNurse(List<FamilyMember> members)
         {
             // Find an adult who is idle (no current job or idle job)
-            var members = FamilyManager.Instance.GetAllFamilyMembers();
+            if (members == null) return null;
             foreach (var m in members)
             {
                 if (!IsValidNursingCandidate(m)) continue;
@@ -170,6 +157,27 @@ namespace Lifespan
             if (ExpeditionStateHelper.IsDepartingOrAway(member)) return false;
 
             return true;
+        }
+
+        private void CleanupDialogueTimes(HashSet<int> activeMemberIds)
+        {
+            if (_lastDialogueTime.Count == 0 || activeMemberIds == null) return;
+
+            List<int> staleIds = null;
+            foreach (var kvp in _lastDialogueTime)
+            {
+                if (!activeMemberIds.Contains(kvp.Key))
+                {
+                    if (staleIds == null) staleIds = new List<int>();
+                    staleIds.Add(kvp.Key);
+                }
+            }
+
+            if (staleIds == null) return;
+            foreach (int id in staleIds)
+            {
+                _lastDialogueTime.Remove(id);
+            }
         }
     }
 }

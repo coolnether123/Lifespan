@@ -21,8 +21,10 @@ namespace Lifespan
         private readonly HashSet<int> _departingProcessed = new HashSet<int>();
         private readonly Dictionary<int, float> _awaySince = new Dictionary<int, float>();
         private readonly Dictionary<int, float> _nextAwayObservationCheck = new Dictionary<int, float>();
+        private float _nextFamilyScanAt;
 
         private const float DepartureDialogueChance = 0.25f;
+        private const float FamilyScanIntervalSeconds = 2f;
         private const float AwayObservationMinDelaySeconds = 360f;
         private const float AwayObservationSoftDurationSeconds = 1200f;
         private const float AwayObservationChancePerCheck = 0.08f;
@@ -41,9 +43,13 @@ namespace Lifespan
         public void Update()
         {
             if (FamilyManager.Instance == null) return;
+            float now = UnityEngine.Time.time;
+            if (now < _nextFamilyScanAt) return;
+            _nextFamilyScanAt = now + FamilyScanIntervalSeconds;
+
             var members = FamilyManager.Instance.GetAllFamilyMembers();
             if (members == null) return;
-            float now = UnityEngine.Time.time;
+            HashSet<int> activeIds = new HashSet<int>();
 
             foreach (var member in members)
             {
@@ -51,6 +57,7 @@ namespace Lifespan
 
                 bool isDeparting = ExpeditionStateHelper.IsDepartingOrAway(member) && !member.isAway;
                 int id = member.GetId();
+                activeIds.Add(id);
 
                 if (isDeparting)
                 {
@@ -90,6 +97,57 @@ namespace Lifespan
                         _nextAwayObservationCheck.Remove(id);
                     }
                 }
+            }
+
+            PruneMissingMembers(activeIds);
+        }
+
+        private void PruneMissingMembers(HashSet<int> activeIds)
+        {
+            PruneIds(_departingProcessed, activeIds);
+            PruneIds(_awaySince, activeIds);
+            PruneIds(_nextAwayObservationCheck, activeIds);
+        }
+
+        private void PruneIds(HashSet<int> ids, HashSet<int> activeIds)
+        {
+            if (ids == null || ids.Count == 0) return;
+
+            List<int> stale = null;
+            foreach (int id in ids)
+            {
+                if (!activeIds.Contains(id))
+                {
+                    if (stale == null) stale = new List<int>();
+                    stale.Add(id);
+                }
+            }
+
+            if (stale == null) return;
+            foreach (int id in stale)
+            {
+                ids.Remove(id);
+            }
+        }
+
+        private void PruneIds(Dictionary<int, float> ids, HashSet<int> activeIds)
+        {
+            if (ids == null || ids.Count == 0) return;
+
+            List<int> stale = null;
+            foreach (var kvp in ids)
+            {
+                if (!activeIds.Contains(kvp.Key))
+                {
+                    if (stale == null) stale = new List<int>();
+                    stale.Add(kvp.Key);
+                }
+            }
+
+            if (stale == null) return;
+            foreach (int id in stale)
+            {
+                ids.Remove(id);
             }
         }
 
@@ -239,6 +297,7 @@ namespace Lifespan
             _departingProcessed.Clear();
             _awaySince.Clear();
             _nextAwayObservationCheck.Clear();
+            _nextFamilyScanAt = 0f;
         }
     }
 }

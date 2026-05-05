@@ -137,15 +137,14 @@ namespace Lifespan
         [HarmonyPatch(typeof(ExpeditionMainPanelNew), "OnShow")]
         public static class ExpeditionOnShowPatch
         {
+            private static readonly FieldInfo EligiblePeopleField = typeof(ExpeditionMainPanelNew).GetField("m_eligiblePeople", BindingFlags.NonPublic | BindingFlags.Instance);
+
             public static void Postfix(ExpeditionMainPanelNew __instance)
             {
                 if (Manager == null || __instance == null) return;
+                if (EligiblePeopleField == null) return;
 
-                // Get the private list m_eligiblePeople
-                var field = typeof(ExpeditionMainPanelNew).GetField("m_eligiblePeople", BindingFlags.NonPublic | BindingFlags.Instance);
-                if (field == null) return;
-
-                List<FamilyMember> eligible = (List<FamilyMember>)field.GetValue(__instance);
+                List<FamilyMember> eligible = (List<FamilyMember>)EligiblePeopleField.GetValue(__instance);
                 if (eligible == null) return;
 
                 // Remove anyone who is not allowed to go on expeditions
@@ -242,6 +241,9 @@ namespace Lifespan
         [HarmonyPatch(typeof(ExpeditionMainPanelNew), "Update")]
         public static class ExpeditionUpdatePatch
         {
+            private static readonly FieldInfo IsReadyToGoField = typeof(ExpeditionMainPanelNew).GetField("m_isReadyToGo", BindingFlags.NonPublic | BindingFlags.Instance);
+            private static readonly FieldInfo MapScreenLegendField = typeof(ExpeditionMainPanelNew).GetField("m_mapScreenLegend", BindingFlags.NonPublic | BindingFlags.Instance);
+
             public static void Postfix(ExpeditionMainPanelNew __instance)
             {
                 if (Manager == null || __instance == null) return;
@@ -261,9 +263,9 @@ namespace Lifespan
 
                 if (!valid)
                 {
-                     Traverse.Create(__instance).Field("m_isReadyToGo").SetValue(false);
+                     if (IsReadyToGoField != null) IsReadyToGoField.SetValue(__instance, false);
                      if (__instance.mapScreenConfirmButton != null) __instance.mapScreenConfirmButton.SetEnabled(false);
-                     var legend = Traverse.Create(__instance).Field("m_mapScreenLegend").GetValue<LegendContainer>();
+                     var legend = MapScreenLegendField != null ? MapScreenLegendField.GetValue(__instance) as LegendContainer : null;
                      if (legend != null) legend.SetButtonEnabled(LegendContainer.ButtonEnum.XButton, false);
                 }
             }

@@ -29,7 +29,7 @@ namespace Lifespan
             _stage = FeedState.GetFood;
         }
 
-        public override string GetJobType() => "Job_FeedChild";
+        public override string GetJobType() => ChildCareJobTypes.FeedChild;
 
         public override void Activate()
         {

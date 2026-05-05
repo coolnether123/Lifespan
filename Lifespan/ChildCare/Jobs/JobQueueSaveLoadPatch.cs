@@ -71,15 +71,15 @@ namespace Lifespan
                     return new Job_ExtinguishFires();
                 case "Job_Revive":
                     return new Job_Revive();
-                case "Job_FeedChild":
+                case ChildCareJobTypes.FeedChild:
                     return new Job_FeedChild();
-                case "Job_GiveWaterChild":
+                case ChildCareJobTypes.GiveWaterChild:
                     return new Job_GiveWaterChild();
-                case "Job_ChangeDiaper":
+                case ChildCareJobTypes.ChangeDiaper:
                     return new Job_ChangeDiaper();
-                case "Job_CleanChild":
+                case ChildCareJobTypes.CleanChild:
                     return new Job_CleanChild();
-                case "Job_HelpSleepChild":
+                case ChildCareJobTypes.HelpSleepChild:
                     return new Job_HelpSleepChild();
                 default:
                     return new Job();

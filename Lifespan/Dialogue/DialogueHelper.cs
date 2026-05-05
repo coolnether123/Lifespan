@@ -1,32 +1,9 @@
-using System;
 using System.Collections.Generic;
 using ModAPI.Core;
 using HarmonyLib;
 
 namespace Lifespan
 {
-    /// <summary>
-    /// Represents a single line of dialogue with optional trait-based weighting.
-    /// TraitId allows the DialogueHelper to prioritize specific lines for specific characters.
-    /// </summary>
-    public class DialogueLine
-    {
-        public string Text;
-        public string TraitId;
-
-        public DialogueLine(string text, string traitId = null)
-        {
-            Text = text;
-            TraitId = traitId;
-        }
-
-        // Implicit conversion allows us to keep existing string-only additions simple
-        public static implicit operator DialogueLine(string text) => new DialogueLine(text);
-        
-        // Helper for creating with trait
-        public static DialogueLine WithTrait(string text, string traitId) => new DialogueLine(text, traitId);
-    }
-
     /// <summary>
     /// Shared utility for picking dialogue with anti-repetition logic.
     /// Centralizes the "weighted bag" logic used across various managers.
