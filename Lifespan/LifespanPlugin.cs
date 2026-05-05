@@ -31,6 +31,7 @@ namespace Lifespan
         private ChildDevelopmentManager _childDevManager;
         private NurseJobGiver _nurseJobGiver;
         private ExpeditionDialogueManager _expeditionDialogueManager;
+        private WeeklyAgingService _weeklyAgingService;
         private bool _pendingHydration;
         private bool _pendingFreshGameHydration;
 
@@ -130,6 +131,17 @@ namespace Lifespan
             if (Log.IsDebugEnabled) Log.Debug("Registering ILifespanAPI...");
             _api = new LifespanAPIImpl(Context, Config, _ageTracker, _illnessManager, _devGeneManager, _childDevManager);
             ModAPIRegistry.RegisterAPI<ILifespanAPI>("com.lifespan.api", _api, Context.Mod.Id);
+            _weeklyAgingService = new WeeklyAgingService(
+                Log,
+                Config,
+                _ageTracker,
+                _childManager,
+                _illnessManager,
+                _deathManager,
+                _devGeneManager,
+                _milestoneManager,
+                () => _api,
+                ProcessHairGreying);
 
             // 4. Initialize Harmony Patches
             if (Log.IsDebugEnabled) Log.Debug("Applying Harmony patches...");
@@ -137,7 +149,7 @@ namespace Lifespan
             AgingPatches.Tracker = _ageTracker;
             AgingPatches.IllnessManager = _illnessManager;
             AgingPatches.DeathManager = _deathManager;
-            AgingPatches.OnNewWeekCallback = OnNewWeek;
+            AgingPatches.OnNewWeekCallback = _weeklyAgingService.ProcessNewWeek;
 
             // Try automatic patching for public methods first
             try
@@ -398,170 +410,6 @@ namespace Lifespan
                     _activeTransitions.RemoveAt(i);
                 }
             }
-        }
-
-        private void OnNewWeek()
-        {
-            int currentDay = GameTime.Day;
-            int currentWeek = GameTime.Week;
-
-            if (Log.IsDebugEnabled) Log.Debug($"[WeeklyAging] New week event received. Day={currentDay}, Week={currentWeek}.");
-            if (FamilyManager.Instance == null)
-            {
-                Log.Warn("FamilyManager.Instance is null. Skipping aging cycle.");
-                return;
-            }
-
-            if (_ageTracker == null)
-            {
-                Log.Warn("AgeTracker is null. Skipping this weekly aging cycle.");
-                return;
-            }
-
-            if (!_ageTracker.IsDataHydrated)
-            {
-                Log.Warn("AgeTracker is not hydrated yet. Skipping this weekly aging cycle.");
-                return;
-            }
-
-            Config.ValidateAndClamp();
-            
-            // 1. Check if we should age this week based on interval
-            if (currentWeek % Config.agingIntervalWeeks != 0)
-            {
-                if (Log.IsDebugEnabled) Log.Debug($"Skipping aging this week (Interval: {Config.agingIntervalWeeks}).");
-                return;
-            }
-
-            int lastProcessedWeek = _ageTracker.LastProcessedAgingWeek;
-            if (!WeeklyAgingPolicy.ShouldProcessAgingWeek(currentWeek, lastProcessedWeek, out string weekSkipReason))
-            {
-                Log.Warn($"[WeeklyAging] Skipping weekly aging because {weekSkipReason}. Day={currentDay}, Week={currentWeek}, LastProcessedWeek={lastProcessedWeek}.");
-                return;
-            }
-
-            if (Log.IsDebugEnabled) Log.Debug($"[WeeklyAging] Processing aging for members (+{Config.weeksAgedPerInterval} weeks).");
-            
-            var members = FamilyManager.Instance.GetAllFamilyMembers();
-            if (members == null)
-            {
-                Log.Warn("FamilyManager returned a null list of members. Skipping cycle.");
-                return;
-            }
-
-            _ageTracker.MarkAgingWeekProcessed(currentWeek);
- 
-            if (Log.IsDebugEnabled)
-            {
-                Log.Debug($"[WeeklyAging] Starting pass. Day={currentDay}, Week={currentWeek}, MemberCount={members.Count}, WeeksToAdd={Config.weeksAgedPerInterval}.");
-            }
-
-            foreach (var member in members)
-            {
-                if (Log.IsDebugEnabled) Log.Debug($"[WeeklyAging] Evaluating member: {(member != null ? member.firstName : "NULL MEMBER")}.");
-                if (member == null)
-                {
-                    Log.Warn("Member in list is null. Skipping.");
-                    continue;
-                }
-
-                if (WeeklyAgingPolicy.ShouldSkipWeeklyAging(member, _api != null ? (Func<BaseCharacter, bool>)_api.ShouldCancelAging : null, out string memberSkipReason))
-                {
-                    LogWeeklyAgingSkip(member, memberSkipReason);
-                    continue;
-                }
-
-                int previousAgeWeeks = _ageTracker.GetAgeWeeks(member);
-                int newAgeWeeks = _ageTracker.IncrementAge(member, Config.weeksAgedPerInterval);
-                int weeksAdded = newAgeWeeks - previousAgeWeeks;
-                int elapsedBiologicalWeeks = Math.Max(1, weeksAdded);
-
-                LogWeeklyAgingIncrement(member, previousAgeWeeks, newAgeWeeks, weeksAdded);
- 
-                if (Log.IsDebugEnabled) Log.Debug($"Checking child transition for '{member.firstName}'. (IsChild: {member.isChild}, Age: {newAgeWeeks} weeks, Threshold: {Config.adultAgeYears * LifespanConstants.WeeksPerYear} weeks)");
-                int adultWeeks = Config.adultAgeYears * LifespanConstants.WeeksPerYear;
-                if (member.isChild && newAgeWeeks >= adultWeeks)
-                {
-                    Log.Info($"{member.firstName} has reached adulthood.");
-                    _childManager.TransitionToAdult(member);
-                }
-
-                if (Log.IsDebugEnabled) Log.Debug($"Checking elder illness for '{member.firstName}'. (Age: {newAgeWeeks} weeks, Threshold: {Config.elderAgeYears * LifespanConstants.WeeksPerYear} weeks)");
-                int elderWeeks = Config.elderAgeYears * LifespanConstants.WeeksPerYear;
-                if (newAgeWeeks >= elderWeeks)
-                {
-                    if (Log.IsDebugEnabled) Log.Debug($"{member.firstName} is an elder. Processing illness roll...");
-                    _illnessManager.ProcessElderIllnessRoll(member, newAgeWeeks);
-                }
-
-                if (Log.IsDebugEnabled) Log.Debug($"Processing hair greying, development, and milestones for '{member.firstName}'.");
-                ProcessHairGreying(member, newAgeWeeks);
-                _devGeneManager.ProcessDevelopment(member, newAgeWeeks, Config.weeksAgedPerInterval);
-                _milestoneManager.ProcessMilestones(member, newAgeWeeks);
-
-                if (member.isDead)
-                {
-                    Log.Debug($"Member '{member.firstName}' died during an illness or development step.");
-                    continue;
-                }
- 
-                if (Log.IsDebugEnabled) Log.Debug($"Processing death roll for '{member.firstName}'.");
-                
-                if (Config.enableNaturalDeath)
-                {
-                    _deathManager.ProcessDeathRoll(member, newAgeWeeks, elapsedBiologicalWeeks);
-                }
-                
-                if (!member.isDead)
-                {
-                    if (Log.IsDebugEnabled) Log.Debug($"Member '{member.firstName}' survived. Publishing event.");
-                    ModEventBus.Publish("Lifespan.CharacterAgedUp", new CharacterAgedUpArgs(member, newAgeWeeks));
-                }
-                else
-                {
-                    Log.Info($"{member.firstName} died of old age.");
-                }
-                if (Log.IsDebugEnabled) Log.Debug($"[WeeklyAging] Finished processing member: {member.firstName}.");
-            }
-            
-            if (Log.IsDebugEnabled) Log.Debug("[WeeklyAging] Cycle complete. Cleaning up missing members from tracker.");
-            _ageTracker.CleanupMissingMembers();
-
-            // Automatic Aging for External Characters (NPCs)
-            if (_api != null)
-            {
-                if (Log.IsDebugEnabled) Log.Debug("[WeeklyAging] Processing aging for external characters (NPCs).");
-                _api.UpdateExternalCharacters(Config.weeksAgedPerInterval);
-            }
-
-            // Force UI update for selected character portrait
-            if (InteractionManager.Instance != null)
-            {
-                InteractionManager.Instance.m_forceAvatarUpdate = true;
-            }
-        }
-
-        private void LogWeeklyAgingSkip(FamilyMember member, string reason)
-        {
-            if (!Log.IsDebugEnabled) return;
-
-            int previousAgeWeeks = -1;
-            _ageTracker?.TryGetAgeWeeks(member, out previousAgeWeeks);
-
-            Log.Debug(
-                $"[WeeklyAging] Skipped member. Reason={reason}, Name={member.firstName}, Id={member.GetId()}, " +
-                $"isAway={member.isAway}, finishedLeavingShelter={member.finishedLeavingShelter}, " +
-                $"previousAgeWeeks={previousAgeWeeks}, newAgeWeeks={previousAgeWeeks}, weeksAdded=0.");
-        }
-
-        private void LogWeeklyAgingIncrement(FamilyMember member, int previousAgeWeeks, int newAgeWeeks, int weeksAdded)
-        {
-            if (!Log.IsDebugEnabled) return;
-
-            Log.Debug(
-                $"[WeeklyAging] Aged member. Name={member.firstName}, Id={member.GetId()}, " +
-                $"isAway={member.isAway}, finishedLeavingShelter={member.finishedLeavingShelter}, " +
-                $"previousAgeWeeks={previousAgeWeeks}, newAgeWeeks={newAgeWeeks}, weeksAdded={weeksAdded}.");
         }
 
         private void ProcessHairGreying(FamilyMember member, int ageWeeks)
