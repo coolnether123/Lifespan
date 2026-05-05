@@ -15,7 +15,7 @@ namespace Lifespan
     {
         private LifespanConfig _config;
         private readonly IModLogger _log;
-        private readonly AgeTracker _ageTracker;
+        private readonly IGeneticState _geneticState;
         private readonly ModRandomStream _random;
         private MilestoneManager _milestoneManager;
         private DialogueScheduler _scheduler;
@@ -69,10 +69,15 @@ namespace Lifespan
         private IModLogger Log => _log;
 
         public DevelopmentGeneManager(IPluginContext ctx, LifespanConfig config, AgeTracker ageTracker, ModRandomStream random)
+            : this(ctx, config, ageTracker != null ? ageTracker.State.Genetics : null, random)
+        {
+        }
+
+        internal DevelopmentGeneManager(IPluginContext ctx, LifespanConfig config, IGeneticState geneticState, ModRandomStream random)
         {
             _config = config;
             _log = ctx.Log;
-            _ageTracker = ageTracker;
+            _geneticState = geneticState;
             _random = random;
         }
 
@@ -98,7 +103,10 @@ namespace Lifespan
         /// </summary>
         public DevelopmentGene GetOrGenerateGene(FamilyMember member)
         {
-            return _ageTracker.GetOrGenerateDevelopmentGene(member);
+            if (member == null || _geneticState == null) return null;
+
+            int id = member.GetId();
+            return _geneticState.GetOrGenerateDevelopmentGene(id, _random);
         }
 
         /// <summary>

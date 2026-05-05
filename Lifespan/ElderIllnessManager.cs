@@ -11,6 +11,7 @@ namespace Lifespan
         private readonly LifespanConfig _config;
         private readonly IModLogger _log;
         private readonly AgeTracker _ageTracker;
+        private readonly IIllnessState _illnessState;
         private readonly ModRandomStream _random;
 
         public const string ILLNESS_DEMENTIA = "lifespan.illness.dementia";
@@ -30,10 +31,16 @@ namespace Lifespan
         private IModLogger Log => _log;
 
         public ElderIllnessManager(IPluginContext ctx, LifespanConfig config, AgeTracker ageTracker, ModRandomStream random, DialogueHelper dialogueHelper)
+            : this(ctx, config, ageTracker, random, dialogueHelper, ageTracker != null ? ageTracker.State.Illnesses : null)
+        {
+        }
+
+        internal ElderIllnessManager(IPluginContext ctx, LifespanConfig config, AgeTracker ageTracker, ModRandomStream random, DialogueHelper dialogueHelper, IIllnessState illnessState)
         {
             _config = config;
             _log = ctx.Log;
             _ageTracker = ageTracker;
+            _illnessState = illnessState;
             _random = random;
             _dialogueHelper = dialogueHelper;
         }
@@ -74,17 +81,17 @@ namespace Lifespan
         private void CheckProgression(FamilyMember member)
         {
             int currentWeek = _ageTracker.GetAgeWeeks(member);
-            var illnesses = _ageTracker.GetIllnesses(member);
+            var illnesses = GetIllnesses(member);
             var toUpgrade = new List<string>();
 
             foreach (var ill in illnesses)
             {
                 if (!ill.Contains(".mild.")) continue;
-                int targetWeek = _ageTracker.GetOnsetWeek(member, ill);
+                int targetWeek = _illnessState.GetOnsetWeek(member.GetId(), ill);
                 if (targetWeek <= 0)
                 {
                     targetWeek = CalculateNextStageWeek(member, currentWeek);
-                    _ageTracker.SetOnsetWeek(member, ill, targetWeek);
+                    _illnessState.SetOnsetWeek(member.GetId(), ill, targetWeek);
                 }
                 if (currentWeek >= targetWeek) toUpgrade.Add(ill);
             }
@@ -92,13 +99,13 @@ namespace Lifespan
             foreach (var mild in toUpgrade)
             {
                 string severe = mild.Replace(".mild.", ".");
-                _ageTracker.RemoveIllness(member, mild);
-                _ageTracker.AddIllness(member, severe);
+                _illnessState.RemoveIllness(member.GetId(), mild);
+                _illnessState.AddIllness(member.GetId(), severe);
                 ApplyInitialEffect(member, severe);
 
                 string victimLine = _dialogueHelper.PickLine($"Flavor_{severe}", IllnessDialogue.GetFlavorOptions(severe));
-                TriggerSpeech(member, victimLine, DialogueScheduler.Priority.Reactive, () => _ageTracker.GetIllnesses(member).Contains(severe));
-                TriggerJournal($"Condition Worsened: {member.firstName} now has {GetIllnessName(severe)}.", DialogueScheduler.Priority.Reactive, () => _ageTracker.GetIllnesses(member).Contains(severe));
+                TriggerSpeech(member, victimLine, DialogueScheduler.Priority.Reactive, () => GetIllnesses(member).Contains(severe));
+                TriggerJournal($"Condition Worsened: {member.firstName} now has {GetIllnessName(severe)}.", DialogueScheduler.Priority.Reactive, () => GetIllnesses(member).Contains(severe));
                 TriggerObserverReactions(member, severe);
             }
         }
@@ -118,7 +125,7 @@ namespace Lifespan
         private void AcquireRandomIllness(FamilyMember member)
         {
             List<string> possible = new List<string>();
-            var current = _ageTracker.GetIllnesses(member);
+            var current = GetIllnesses(member);
             if (_config.enableDementia && !current.Contains(ILLNESS_MILD_DEMENTIA) && !current.Contains(ILLNESS_DEMENTIA)) possible.Add(ILLNESS_MILD_DEMENTIA);
             if (_config.enableArthritis && !current.Contains(ILLNESS_MILD_ARTHRITIS) && !current.Contains(ILLNESS_ARTHRITIS)) possible.Add(ILLNESS_MILD_ARTHRITIS);
             if (_config.enableHeartDisease && !current.Contains(ILLNESS_MILD_HEART) && !current.Contains(ILLNESS_HEART)) possible.Add(ILLNESS_MILD_HEART);
@@ -128,13 +135,13 @@ namespace Lifespan
             if (possible.Count > 0)
             {
                 string picked = possible[_random.Range(0, possible.Count)];
-                _ageTracker.AddIllness(member, picked);
-                _ageTracker.SetOnsetWeek(member, picked, CalculateNextStageWeek(member, _ageTracker.GetAgeWeeks(member)));
+                _illnessState.AddIllness(member.GetId(), picked);
+                _illnessState.SetOnsetWeek(member.GetId(), picked, CalculateNextStageWeek(member, _ageTracker.GetAgeWeeks(member)));
                 ApplyInitialEffect(member, picked);
                 
                 string flavor = _dialogueHelper.PickLine($"Flavor_{picked}", IllnessDialogue.GetFlavorOptions(picked));
-                TriggerSpeech(member, flavor, DialogueScheduler.Priority.Reactive, () => _ageTracker.GetIllnesses(member).Contains(picked));
-                TriggerJournal($"{member.firstName} is showing signs of {GetIllnessName(picked)}.", DialogueScheduler.Priority.Reactive, () => _ageTracker.GetIllnesses(member).Contains(picked));
+                TriggerSpeech(member, flavor, DialogueScheduler.Priority.Reactive, () => GetIllnesses(member).Contains(picked));
+                TriggerJournal($"{member.firstName} is showing signs of {GetIllnessName(picked)}.", DialogueScheduler.Priority.Reactive, () => GetIllnesses(member).Contains(picked));
             }
         }
 
@@ -156,14 +163,14 @@ namespace Lifespan
             {
                 var obs = observers[i];
                 string line = _dialogueHelper.PickLine($"Observe_{illnessId}", IllnessDialogue.GetObservationOptions(victim.firstName, illnessId), obs);
-                TriggerSpeech(obs, line, DialogueScheduler.Priority.Reactive, () => _ageTracker.GetIllnesses(victim).Contains(illnessId) && !victim.isDead);
+                TriggerSpeech(obs, line, DialogueScheduler.Priority.Reactive, () => GetIllnesses(victim).Contains(illnessId) && !victim.isDead);
             }
         }
 
         public void ReapplyModifiers(FamilyMember member)
         {
             if (member == null || member.isDead) return;
-            foreach (var id in _ageTracker.GetIllnesses(member)) ApplyInitialEffect(member, id, true);
+            foreach (var id in GetIllnesses(member)) ApplyInitialEffect(member, id, true);
         }
 
         private void ApplyInitialEffect(FamilyMember member, string illnessId, bool silent = false)
@@ -174,7 +181,7 @@ namespace Lifespan
 
         private void ApplyOngoingEffects(FamilyMember member)
         {
-            foreach (var id in _ageTracker.GetIllnesses(member))
+            foreach (var id in GetIllnesses(member))
             {
                 if (id == ILLNESS_HEART && _random.Value() < _config.heartDiseaseAttackChance / 100f) TriggerHeartAttack(member);
                 else if (id == ILLNESS_MILD_HEART && _random.Value() < 0.05f) TriggerJournal(IllnessDialogue.GetMinorHeartPalpitationMessage(member.firstName));
@@ -259,17 +266,25 @@ namespace Lifespan
             }
         }
 
-        public List<string> GetActiveIllnesses(FamilyMember member) => _ageTracker.GetIllnesses(member);
+        public List<string> GetActiveIllnesses(FamilyMember member) => GetIllnesses(member);
 
         public void AddIllnessExternal(FamilyMember member, string id)
         {
-            _ageTracker.AddIllness(member, id);
+            if (member == null) return;
+            _illnessState.AddIllness(member.GetId(), id);
             ApplyInitialEffect(member, id);
         }
 
         public void RemoveIllnessExternal(FamilyMember member, string id)
         {
-            _ageTracker.RemoveIllness(member, id);
+            if (member == null) return;
+            _illnessState.RemoveIllness(member.GetId(), id);
+        }
+
+        private List<string> GetIllnesses(FamilyMember member)
+        {
+            if (member == null || _illnessState == null) return new List<string>();
+            return _illnessState.GetIllnesses(member.GetId());
         }
     }
 }

@@ -8,6 +8,8 @@ namespace Lifespan
 {
     public static class GameOverPatches
     {
+        internal static IDeathRecordState DeathRecords;
+
         // -------------
         // 1. Data Patch: Capture correct death date AND ID
         // -------------
@@ -23,8 +25,8 @@ namespace Lifespan
                     int id = fm.GetId();
                     __result.id = id;
 
-                    // Check for persistent death info in AgeTracker (Primary Source)
-                    if (AgingPatches.Tracker != null && AgingPatches.Tracker.TryGetDeathInfo(id, out int day, out int ageWeeks))
+                    // Check for persistent death info in the death-record system (Primary Source)
+                    if (DeathRecords != null && DeathRecords.TryGetDeathInfo(id, out int day, out int ageWeeks))
                     {
                         if (day > 0)
                         {
@@ -79,16 +81,16 @@ namespace Lifespan
                         int finalDay = info.death_date;
                         int ageWeeks = 0;
 
-                        if (AgingPatches.Tracker != null && info.id > -1)
+                        if (info.id > -1)
                         {
-                            if (AgingPatches.Tracker.TryGetDeathInfo(info.id, out int savedDay, out int savedAgeWeeks))
+                            if (DeathRecords != null && DeathRecords.TryGetDeathInfo(info.id, out int savedDay, out int savedAgeWeeks))
                             {
                                 if (savedDay > 0) finalDay = savedDay;
                                 ageWeeks = savedAgeWeeks;
                             }
                             
                             // Fallback to active age if not found (catatonic/missing but not dead)
-                            if (ageWeeks == 0)
+                            if (ageWeeks == 0 && AgingPatches.Tracker != null)
                             {
                                 ageWeeks = AgingPatches.Tracker.GetAgeWeeks(info.id);
                             }
@@ -141,10 +143,10 @@ namespace Lifespan
                 {
                     // Find the label safely
                     UILabel daysLastedLabel = Traverse.Create(__instance).Field("daysLastedLabel").GetValue<UILabel>();
-                    if (daysLastedLabel != null && AgingPatches.Tracker != null)
+                    if (daysLastedLabel != null)
                     {
                         // Get the highest death day from our records
-                        int maxDay = AgingPatches.Tracker.GetMaxDeathDay();
+                        int maxDay = DeathRecords != null ? DeathRecords.GetMaxDeathDay() : 0;
                         
                         // If we have no records (e.g. they died of hunger on day 1), use vanilla value
                         if (maxDay <= 0) maxDay = GameTime.Day;

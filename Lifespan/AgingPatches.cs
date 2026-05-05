@@ -11,6 +11,7 @@ namespace Lifespan
         internal static AgeTracker Tracker;
         internal static ElderIllnessManager IllnessManager;
         internal static DeathManager DeathManager;
+        internal static IIllnessState IllnessState;
         internal static Action OnNewWeekCallback;
         internal static Action OnNewDayCallback;
 
@@ -139,9 +140,9 @@ namespace Lifespan
 
         private static void ApplyIllnessStatModifiers(FamilyMember member)
         {
-            if (Tracker == null || IllnessManager == null || member?.BaseStats == null) return;
+            if (IllnessState == null || IllnessManager == null || member?.BaseStats == null) return;
 
-            var illnesses = Tracker.GetIllnesses(member);
+            var illnesses = IllnessState.GetIllnesses(member.GetId());
             if (illnesses == null || illnesses.Count == 0) return;
             var cfg = LifespanPlugin.Instance?.Config;
  

@@ -14,7 +14,7 @@ namespace Lifespan
     {
         private readonly LifespanConfig _config;
         private readonly IModLogger _log;
-        private readonly AgeTracker _ageTracker;
+        private readonly IGeneticState _geneticState;
         private readonly ModRandomStream _random;
         private IModLogger Log => _log;
 
@@ -24,10 +24,15 @@ namespace Lifespan
         private const float VisualRetryDelaySeconds = 5f;
 
         public ChildTransitionManager(IPluginContext ctx, LifespanConfig config, AgeTracker ageTracker, ModRandomStream random)
+            : this(ctx, config, ageTracker != null ? ageTracker.State.Genetics : null, random)
+        {
+        }
+
+        internal ChildTransitionManager(IPluginContext ctx, LifespanConfig config, IGeneticState geneticState, ModRandomStream random)
         {
             _config = config;
             _log = ctx.Log;
-            _ageTracker = ageTracker;
+            _geneticState = geneticState;
             _random = random;
         }
 
@@ -135,7 +140,7 @@ namespace Lifespan
                 UpdateStatCap(member.BaseStats.Perception, "perception");
             }
 
-            var gene = _ageTracker.GetOrGenerateDevelopmentGene(member);
+            var gene = GetOrGenerateDevelopmentGene(member);
             if (gene != null)
             {
                 int oldPotential = gene.PostAdultPotential;
@@ -376,6 +381,14 @@ namespace Lifespan
                     break;
                 }
             }
+        }
+
+        private DevelopmentGene GetOrGenerateDevelopmentGene(FamilyMember member)
+        {
+            if (member == null || _geneticState == null) return null;
+
+            int id = member.GetId();
+            return _geneticState.GetOrGenerateDevelopmentGene(id, _random);
         }
     }
 }

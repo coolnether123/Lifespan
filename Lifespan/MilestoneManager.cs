@@ -14,19 +14,26 @@ namespace Lifespan
         private readonly LifespanConfig _config;
         private readonly IModLogger _log;
         private readonly AgeTracker _ageTracker;
+        private readonly IMilestoneProgressState _milestoneState;
         private readonly ModRandomStream _random;
         private DialogueScheduler _scheduler;
 
-        private Dictionary<int, HashSet<string>> _triggeredMilestones => _ageTracker.GetTriggeredMilestones();
-        private Dictionary<int, int> _lastBirthdayYear => _ageTracker.GetLastBirthdayYears();
+        private Dictionary<int, HashSet<string>> _triggeredMilestones => _milestoneState.TriggeredMilestones;
+        private Dictionary<int, int> _lastBirthdayYear => _milestoneState.LastBirthdayYears;
         private readonly DialogueHelper _dialogueHelper;
         private IModLogger Log => _log;
 
         public MilestoneManager(IPluginContext ctx, LifespanConfig config, AgeTracker ageTracker, ModRandomStream random, DialogueHelper dialogueHelper)
+            : this(ctx, config, ageTracker, random, dialogueHelper, ageTracker != null ? ageTracker.State.Milestones : null)
+        {
+        }
+
+        internal MilestoneManager(IPluginContext ctx, LifespanConfig config, AgeTracker ageTracker, ModRandomStream random, DialogueHelper dialogueHelper, IMilestoneProgressState milestoneState)
         {
             _config = config;
             _log = ctx.Log;
             _ageTracker = ageTracker;
+            _milestoneState = milestoneState;
             _random = random;
             _dialogueHelper = dialogueHelper;
         }

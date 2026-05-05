@@ -34,23 +34,23 @@
 
   <ItemGroup>
     <Reference Include="0Harmony">
-      <HintPath>$(SmmRepoRoot)\Dist\SMM\bin\0Harmony.dll</HintPath>
+      <HintPath>$(ShelteredSmmRoot)\bin\0Harmony.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="Assembly-CSharp">
-      <HintPath>$(SmmRepoRoot)\libs\Assembly-CSharp.dll</HintPath>
+      <HintPath>$(ShelteredManagedRoot)\Assembly-CSharp.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="ModAPI">
-      <HintPath>$(SmmRepoRoot)\Dist\SMM\ModAPI.dll</HintPath>
+      <HintPath>$(ShelteredModsRoot)\ModAPI.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="ShelteredAPI">
-      <HintPath>$(SmmRepoRoot)\Dist\SMM\bin\ShelteredAPI.dll</HintPath>
+      <HintPath>$(ShelteredModsRoot)\ShelteredAPI.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="UnityEngine">
-      <HintPath>$(SmmRepoRoot)\libs\UnityEngine.dll</HintPath>
+      <HintPath>$(ShelteredManagedRoot)\UnityEngine.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="System" />

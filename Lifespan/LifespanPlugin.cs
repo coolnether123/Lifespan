@@ -32,6 +32,7 @@ namespace Lifespan
         private NurseJobGiver _nurseJobGiver;
         private ExpeditionDialogueManager _expeditionDialogueManager;
         private WeeklyAgingService _weeklyAgingService;
+        private LifespanState _lifespanState;
         private bool _pendingHydration;
         private bool _pendingFreshGameHydration;
 
@@ -83,19 +84,19 @@ namespace Lifespan
                 Config?.ValidateAndClamp();
                 
                 // 1. Initialize core utilities
+                _lifespanState = new LifespanState();
                 _dialogueScheduler = new DialogueScheduler(Log, this.Random);
-                _dialogueHelper = new DialogueHelper(this.Random);
+                _dialogueHelper = new DialogueHelper(this.Random, _lifespanState.Dialogue);
                 
                 // 2. Initialize primary data tracker (AgeTracker)
-                _ageTracker = new AgeTracker(ctx, Config, this.Random);
-                _dialogueHelper.SetAgeTracker(_ageTracker);
+                _ageTracker = new AgeTracker(ctx, Config, this.Random, new AgeDataStore(ctx), _lifespanState);
                 
                 // 3. Initialize domain-specific managers
-                _childManager = new ChildTransitionManager(ctx, Config, _ageTracker, this.Random);
-                _illnessManager = new ElderIllnessManager(ctx, Config, _ageTracker, this.Random, _dialogueHelper);
-                _milestoneManager = new MilestoneManager(ctx, Config, _ageTracker, this.Random, _dialogueHelper); 
-                _deathManager = new DeathManager(ctx, Config, _ageTracker, this.Random);
-                _devGeneManager = new DevelopmentGeneManager(ctx, Config, _ageTracker, this.Random);
+                _childManager = new ChildTransitionManager(ctx, Config, _lifespanState.Genetics, this.Random);
+                _illnessManager = new ElderIllnessManager(ctx, Config, _ageTracker, this.Random, _dialogueHelper, _lifespanState.Illnesses);
+                _milestoneManager = new MilestoneManager(ctx, Config, _ageTracker, this.Random, _dialogueHelper, _lifespanState.Milestones);
+                _deathManager = new DeathManager(ctx, Config, _ageTracker, this.Random, _lifespanState.Deaths);
+                _devGeneManager = new DevelopmentGeneManager(ctx, Config, _lifespanState.Genetics, this.Random);
                 
                 _childDevManager = new ChildDevelopmentManager(ctx, Config, _ageTracker);
                 _nurseJobGiver = new NurseJobGiver(ctx, _childDevManager, _ageTracker, _dialogueScheduler);
@@ -149,7 +150,9 @@ namespace Lifespan
             AgingPatches.Tracker = _ageTracker;
             AgingPatches.IllnessManager = _illnessManager;
             AgingPatches.DeathManager = _deathManager;
+            AgingPatches.IllnessState = _lifespanState.Illnesses;
             AgingPatches.OnNewWeekCallback = _weeklyAgingService.ProcessNewWeek;
+            GameOverPatches.DeathRecords = _lifespanState.Deaths;
 
             // Try automatic patching for public methods first
             try
@@ -553,6 +556,8 @@ namespace Lifespan
             ShelteredEvents.SessionStarted -= OnSessionStarted;
             ShelteredEvents.NewGame -= OnNewGame;
             AgingPatches.OnNewWeekCallback = null;
+            AgingPatches.IllnessState = null;
+            GameOverPatches.DeathRecords = null;
             Log.Info("Mod shut down.");
         }
 

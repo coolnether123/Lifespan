@@ -37,19 +37,30 @@ namespace Lifespan
         public const float DEFAULT_WEIGHT = 1.0f;
         public const float TRAIT_WEIGHT_BOOST = 1.25f;
 
-        private AgeTracker _tracker;
+        private IDialogueHistoryState _historyState;
         private readonly Dictionary<string, HashSet<int>> _localHistory = new Dictionary<string, HashSet<int>>();
-        private Dictionary<string, HashSet<int>> History => _tracker?.GetDialogueHistory() ?? _localHistory;
+        private Dictionary<string, HashSet<int>> History => _historyState != null ? _historyState.History : _localHistory;
         private readonly ModRandomStream _random;
 
         public DialogueHelper(ModRandomStream random)
+            : this(random, null)
+        {
+        }
+
+        internal DialogueHelper(ModRandomStream random, IDialogueHistoryState historyState)
         {
             _random = random;
+            _historyState = historyState;
         }
 
         public void SetAgeTracker(AgeTracker tracker)
         {
-            _tracker = tracker;
+            _historyState = tracker != null ? tracker.State.Dialogue : null;
+        }
+
+        internal void SetHistoryState(IDialogueHistoryState historyState)
+        {
+            _historyState = historyState;
         }
 
         /// <summary>

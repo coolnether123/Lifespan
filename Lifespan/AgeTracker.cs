@@ -20,7 +20,7 @@ namespace Lifespan
         private readonly IModLogger _log;
         private readonly ModRandomStream _random;
         private readonly IAgeDataStore _dataStore;
-        private AgeData _currentAgeData;
+        private readonly LifespanState _state;
         private bool _isDataHydrated;
         private bool _allowFreshInitialization;
         
@@ -39,20 +39,27 @@ namespace Lifespan
         /// <param name="config">Lifespan configuration settings.</param>
         /// <param name="random">Seeded random stream for deterministic age generation.</param>
         public AgeTracker(IPluginContext ctx, LifespanConfig config, ModRandomStream random)
-            : this(ctx, config, random, new AgeDataStore(ctx))
+            : this(ctx, config, random, new AgeDataStore(ctx), new LifespanState())
         {
         }
 
         internal AgeTracker(IPluginContext ctx, LifespanConfig config, ModRandomStream random, IAgeDataStore dataStore)
+            : this(ctx, config, random, dataStore, new LifespanState())
+        {
+        }
+
+        internal AgeTracker(IPluginContext ctx, LifespanConfig config, ModRandomStream random, IAgeDataStore dataStore, LifespanState state)
         {
             _config = config;
             _log = ctx.Log;
-            _currentAgeData = new AgeData();
+            _state = state ?? new LifespanState();
             _random = random;
             _dataStore = dataStore;
             _isDataHydrated = false;
             _allowFreshInitialization = false;
         }
+
+        internal LifespanState State => _state;
 
         /// <summary>
         /// Clear all tracking data. Typically called when starting a new game or changing slots.
@@ -60,7 +67,7 @@ namespace Lifespan
         public void Reset(bool clearPersistentContainer = false)
         {
             Log.Debug("Resetting tracking data for fresh session.");
-            _currentAgeData = new AgeData();
+            _state.Replace(new AgeData());
             _isDataHydrated = false;
             _allowFreshInitialization = false;
 
@@ -74,11 +81,11 @@ namespace Lifespan
 
         public bool IsDataHydrated => _isDataHydrated;
 
-        public int LastProcessedAgingWeek => _currentAgeData.lastProcessedAgingWeek;
+        public int LastProcessedAgingWeek => _state.Ages.LastProcessedAgingWeek;
 
         public void MarkAgingWeekProcessed(int week)
         {
-            _currentAgeData.lastProcessedAgingWeek = week;
+            _state.Ages.LastProcessedAgingWeek = week;
         }
 
         /// <summary>
@@ -152,14 +159,15 @@ namespace Lifespan
             bool isFamilyMember = character is FamilyMember;
 
             // Check if we already have data to prevent re-rolling
-            if (isFamilyMember && _currentAgeData.familyMemberAges.ContainsKey(id))
+            int existingAgeWeeks;
+            if (isFamilyMember && _state.Ages.TryGetFamilyAgeWeeks(id, out existingAgeWeeks))
             {
-                return _currentAgeData.familyMemberAges[id];
+                return existingAgeWeeks;
             }
 
-            if (!isFamilyMember && _currentAgeData.externalCharacterAges.ContainsKey(id))
+            if (!isFamilyMember && _state.Ages.TryGetExternalAgeWeeks(id, out existingAgeWeeks))
             {
-                return _currentAgeData.externalCharacterAges[id];
+                return existingAgeWeeks;
             }
 
             // Route generation to specific handlers
@@ -186,15 +194,11 @@ namespace Lifespan
             // Commit to memory
             if (isFamilyMember)
             {
-                _currentAgeData.familyMemberAges[id] = ageWeeks;
-                if (_currentAgeData.externalCharacterAges.ContainsKey(id))
-                {
-                    _currentAgeData.externalCharacterAges.Remove(id);
-                }
+                _state.Ages.SetFamilyAgeWeeks(id, ageWeeks);
             }
             else
             {
-                _currentAgeData.externalCharacterAges[id] = ageWeeks;
+                _state.Ages.SetExternalAgeWeeks(id, ageWeeks);
             }
             
             // Notify other mod systems (API Hook)
@@ -229,29 +233,12 @@ namespace Lifespan
         /// </summary>
         public int GetAgeWeeks(int id)
         {
-            if (_currentAgeData.familyMemberAges.ContainsKey(id))
-            {
-                return _currentAgeData.familyMemberAges[id];
-            }
-            if (_currentAgeData.externalCharacterAges.ContainsKey(id))
-            {
-                return _currentAgeData.externalCharacterAges[id];
-            }
-            return 0;
+            return _state.Ages.GetAgeWeeksOrDefault(id);
         }
 
         public bool TryGetAgeWeeks(int id, out int ageWeeks)
         {
-            if (_currentAgeData.familyMemberAges.TryGetValue(id, out ageWeeks))
-            {
-                return true;
-            }
-            if (_currentAgeData.externalCharacterAges.TryGetValue(id, out ageWeeks))
-            {
-                return true;
-            }
-            ageWeeks = 0;
-            return false;
+            return _state.Ages.TryGetAgeWeeks(id, out ageWeeks);
         }
 
         /// <summary>
@@ -308,9 +295,10 @@ namespace Lifespan
                 return 0;
 
             int memberId = member.GetId();
-            if (_currentAgeData.familyMemberAges.ContainsKey(memberId))
+            int existingAgeWeeks;
+            if (_state.Ages.TryGetFamilyAgeWeeks(memberId, out existingAgeWeeks))
             {
-                return _currentAgeData.familyMemberAges[memberId];
+                return existingAgeWeeks;
             }
 
             if (!_isDataHydrated && !_allowFreshInitialization)
@@ -324,7 +312,7 @@ namespace Lifespan
 
             // Lazy initialization for members recruited through vanilla means
             int initialAge = GenerateInitialAge(member, member.isChild);
-            _currentAgeData.familyMemberAges[memberId] = initialAge;
+            _state.Ages.SetFamilyAgeWeeks(memberId, initialAge);
             if (Log.IsDebugEnabled) _log.Info($"Initialized age for {member.firstName} to {initialAge / LifespanConstants.WeeksPerYear} years (ID: {memberId}).");
             
             ModEventBus.Publish("Lifespan.AgeInitialized", new AgeChangedArgs(member, initialAge, 0));
@@ -337,7 +325,7 @@ namespace Lifespan
             ageWeeks = 0;
             if (object.ReferenceEquals(member, null)) return false;
             int memberId = member.GetId();
-            return _currentAgeData.familyMemberAges.TryGetValue(memberId, out ageWeeks);
+            return _state.Ages.TryGetFamilyAgeWeeks(memberId, out ageWeeks);
         }
 
         /// <summary>
@@ -353,9 +341,10 @@ namespace Lifespan
             }
 
             int id = character.GetId();
-            if (_currentAgeData.externalCharacterAges.ContainsKey(id))
+            int ageWeeks;
+            if (_state.Ages.TryGetExternalAgeWeeks(id, out ageWeeks))
             {
-                return _currentAgeData.externalCharacterAges[id];
+                return ageWeeks;
             }
 
             return 0;
@@ -366,7 +355,7 @@ namespace Lifespan
         /// </summary>
         public void SetExternalCharacterAge(int id, int ageWeeks)
         {
-            _currentAgeData.externalCharacterAges[id] = ageWeeks;
+            _state.Ages.SetExternalAgeWeeks(id, ageWeeks);
         }
 
         /// <summary>
@@ -386,7 +375,7 @@ namespace Lifespan
                 return;
 
             int memberId = member.GetId();
-            _currentAgeData.familyMemberAges[memberId] = Math.Max(0, weeks);
+            _state.Ages.SetFamilyAgeWeeks(memberId, weeks);
             if (Log.IsDebugEnabled) _log.Info($"Manual age override: {member.firstName} set to {weeks / LifespanConstants.WeeksPerYear} years.");
         }
 
@@ -404,7 +393,7 @@ namespace Lifespan
             }
 
             int id = character.GetId();
-            _currentAgeData.externalCharacterAges[id] = Math.Max(0, weeks);
+            _state.Ages.SetExternalAgeWeeks(id, weeks);
         }
 
         /// <summary>
@@ -412,7 +401,7 @@ namespace Lifespan
         /// </summary>
         public List<int> GetAllTrackedExternalIds()
         {
-            return new List<int>(_currentAgeData.externalCharacterAges.Keys);
+            return _state.Ages.GetAllExternalIds();
         }
 
         /// <summary>
@@ -441,7 +430,7 @@ namespace Lifespan
             int newAge = currentAge + increment;
             
             int memberId = member.GetId();
-            _currentAgeData.familyMemberAges[memberId] = newAge;
+            _state.Ages.SetFamilyAgeWeeks(memberId, newAge);
 
             // Birthday logging
             if (newAge / LifespanConstants.WeeksPerYear > currentAge / LifespanConstants.WeeksPerYear)
@@ -481,9 +470,9 @@ namespace Lifespan
                 }
 
                 SyncWithFamilyManager();
-                _dataStore.Save(_currentAgeData);
+                _dataStore.Save(_state.Data);
 
-                if (Log.IsDebugEnabled) Log.Debug($"Synced {_currentAgeData.familyMemberAges.Count} members and {_currentAgeData.externalCharacterAges.Count} NPCs to save container.");
+                if (Log.IsDebugEnabled) Log.Debug($"Synced {_state.Ages.FamilyCount} members and {_state.Ages.ExternalCount} NPCs to save container.");
             }
             catch (Exception ex)
             {
@@ -522,14 +511,14 @@ namespace Lifespan
 
                 if (_dataStore.HasSavedData)
                 {
-                    _currentAgeData = _dataStore.Load();
-                    Log.Info($"[AgeTracker] Hydrated from v1.2 container. Members: {_currentAgeData.familyMemberAges.Count}, External: {_currentAgeData.externalCharacterAges.Count}.");
+                    _state.Replace(_dataStore.Load());
+                    Log.Info($"[AgeTracker] Hydrated from v1.2 container. Members: {_state.Ages.FamilyCount}, External: {_state.Ages.ExternalCount}.");
                 }
                 else
                 {
                     _log.Warn("No records found in save container.");
                     Log.Info("[AgeTracker] Fresh initialization path taken (no saved age data found).");
-                    _currentAgeData = new AgeData();
+                    _state.Replace(new AgeData());
                     _allowFreshInitialization = true;
                     try
                     {
@@ -547,7 +536,7 @@ namespace Lifespan
             catch (Exception ex)
             {
                 _log.Error($"CRITICAL FAILURE loading age data: {ex.Message}");
-                _currentAgeData = new AgeData();
+                _state.Replace(new AgeData());
                 _allowFreshInitialization = true;
                 try
                 {
@@ -605,15 +594,15 @@ namespace Lifespan
                 }
             }
 
-            List<int> toRemove = _currentAgeData.familyMemberAges.Keys.Where(id => !validIds.Contains(id)).ToList();
+            List<int> toRemove = _state.Ages.GetFamilyIds().Where(id => !validIds.Contains(id)).ToList();
             if (toRemove.Count > 0)
             {
                 if (Log.IsDebugEnabled) Log.Debug($"[AgeTracker] Cleaning up {toRemove.Count} IDs that no longer exist.");
             }
             foreach (var id in toRemove)
             {
-                _currentAgeData.familyMemberAges.Remove(id);
-                _currentAgeData.elderIllnesses.Remove(id);
+                _state.Ages.RemoveFamilyMember(id);
+                _state.Illnesses.RemoveMember(id);
             }
 
             if (toRemove.Count > 0)
@@ -629,11 +618,7 @@ namespace Lifespan
         {
             if (member == null) return new List<string>();
             int id = member.GetId();
-            if (!_currentAgeData.elderIllnesses.ContainsKey(id))
-            {
-                _currentAgeData.elderIllnesses[id] = new List<string>();
-            }
-            return _currentAgeData.elderIllnesses[id];
+            return _state.Illnesses.GetIllnesses(id);
         }
 
         /// <summary>
@@ -642,10 +627,11 @@ namespace Lifespan
         public void AddIllness(FamilyMember member, string illnessId)
         {
             if (member == null) return;
-            var list = GetIllnesses(member);
+            int id = member.GetId();
+            var list = _state.Illnesses.GetIllnesses(id);
             if (!list.Contains(illnessId))
             {
-                list.Add(illnessId);
+                _state.Illnesses.AddIllness(id, illnessId);
                 if (Log.IsDebugEnabled) Log.Debug($"[AgeTracker] Added illness {illnessId} to {member.firstName}.");
             }
         }
@@ -657,15 +643,8 @@ namespace Lifespan
         {
             if (member == null) return;
             int id = member.GetId();
-            if (_currentAgeData.elderIllnesses.ContainsKey(id))
-            {
-                _currentAgeData.elderIllnesses[id].Remove(illnessId);
-                if (_currentAgeData.onsetTiming.ContainsKey(id))
-                {
-                    _currentAgeData.onsetTiming[id].Remove(illnessId);
-                }
-                if (Log.IsDebugEnabled) Log.Debug($"[AgeTracker] Removed illness {illnessId} from {member.firstName}.");
-            }
+            _state.Illnesses.RemoveIllness(id, illnessId);
+            if (Log.IsDebugEnabled) Log.Debug($"[AgeTracker] Removed illness {illnessId} from {member.firstName}.");
         }
 
         /// <summary>
@@ -675,11 +654,7 @@ namespace Lifespan
         {
              if (member == null) return;
              int id = member.GetId();
-             if (!_currentAgeData.onsetTiming.ContainsKey(id))
-             {
-                 _currentAgeData.onsetTiming[id] = new Dictionary<string, int>();
-             }
-             _currentAgeData.onsetTiming[id][illnessId] = targetWeek;
+             _state.Illnesses.SetOnsetWeek(id, illnessId, targetWeek);
         }
 
         /// <summary>
@@ -689,11 +664,7 @@ namespace Lifespan
         {
              if (member == null) return -1;
              int id = member.GetId();
-             if (_currentAgeData.onsetTiming.TryGetValue(id, out var timing) && timing.TryGetValue(illnessId, out int week))
-             {
-                 return week;
-             }
-             return -1;
+             return _state.Illnesses.GetOnsetWeek(id, illnessId);
         }
 
         /// <summary>
@@ -705,9 +676,9 @@ namespace Lifespan
             if (member == null) return null;
             int id = member.GetId();
 
-            if (_currentAgeData.greyProfiles.ContainsKey(id))
+            GreyProfile existing;
+            if (_state.Genetics.TryGetGreyProfile(id, out existing))
             {
-                var existing = _currentAgeData.greyProfiles[id];
                 if (existing.Gene == null)
                 {
                     existing.Gene = GreyingGene.GenerateRandom(_random);
@@ -723,7 +694,7 @@ namespace Lifespan
             profile.OriginalColor = new float[] { currentHair.r, currentHair.g, currentHair.b, currentHair.a };
             profile.Gene = GreyingGene.GenerateRandom(_random);
 
-            _currentAgeData.greyProfiles[id] = profile;
+            _state.Genetics.SetGreyProfile(id, profile);
             return profile;
         }
 
@@ -735,14 +706,7 @@ namespace Lifespan
             if (member == null) return null;
             int id = member.GetId();
 
-            if (_currentAgeData.developmentGenes.ContainsKey(id))
-            {
-                return _currentAgeData.developmentGenes[id];
-            }
-
-            var gene = DevelopmentGene.GenerateRandom(_random);
-            _currentAgeData.developmentGenes[id] = gene;
-            return gene;
+            return _state.Genetics.GetOrGenerateDevelopmentGene(id, _random);
         }
 
         /// <summary>
@@ -754,8 +718,7 @@ namespace Lifespan
             int id = member.GetId();
             int ageWeeks = GetAgeWeeks(member);
             
-            _currentAgeData.deceasedDeathDays[id] = backdatedDay;
-            _currentAgeData.deceasedDeathAges[id] = ageWeeks;
+            _state.Deaths.RecordDeath(id, backdatedDay, ageWeeks);
             _log.Info($"[Lifespan] Recorded death for {member.firstName}. Day: {backdatedDay}, Age: {ageWeeks / LifespanConstants.WeeksPerYear}y.");
         }
 
@@ -766,9 +729,7 @@ namespace Lifespan
         {
             day = 0;
             ageWeeks = 0;
-            bool foundDay = _currentAgeData.deceasedDeathDays.TryGetValue(id, out day);
-            bool foundAge = _currentAgeData.deceasedDeathAges.TryGetValue(id, out ageWeeks);
-            return foundDay || foundAge;
+            return _state.Deaths.TryGetDeathInfo(id, out day, out ageWeeks);
         }
 
         /// <summary>
@@ -776,29 +737,23 @@ namespace Lifespan
         /// </summary>
         public int GetMaxDeathDay()
         {
-            if (_currentAgeData.deceasedDeathDays.Count == 0) return 0;
-            int max = 0;
-            foreach (var day in _currentAgeData.deceasedDeathDays.Values)
-            {
-                if (day > max) max = day;
-            }
-            return max;
+            return _state.Deaths.GetMaxDeathDay();
         }
 
         /// <summary>
         /// Persistence Bridge: Returns the persistent milestone map.
         /// </summary>
-        public Dictionary<int, HashSet<string>> GetTriggeredMilestones() => _currentAgeData.triggeredMilestones;
+        public Dictionary<int, HashSet<string>> GetTriggeredMilestones() => _state.Milestones.TriggeredMilestones;
         
         /// <summary>
         /// Persistence Bridge: Returns the persistent birthday tracking map.
         /// </summary>
-        public Dictionary<int, int> GetLastBirthdayYears() => _currentAgeData.lastBirthdayYear;
+        public Dictionary<int, int> GetLastBirthdayYears() => _state.Milestones.LastBirthdayYears;
         
         /// <summary>
         /// Persistence Bridge: Returns the persistent dialogue history 'bag'.
         /// </summary>
-        public Dictionary<string, HashSet<int>> GetDialogueHistory() => _currentAgeData.dialogueHistory;
+        public Dictionary<string, HashSet<int>> GetDialogueHistory() => _state.Dialogue.History;
     }
 
 }

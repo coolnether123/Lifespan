@@ -14,6 +14,7 @@ namespace Lifespan
         private readonly LifespanConfig _config;
         private readonly IModLogger _log;
         private readonly AgeTracker _ageTracker;
+        private readonly IDeathRecordState _deathRecords;
         private readonly ModRandomStream _random;
         private DialogueScheduler _scheduler;
 
@@ -22,10 +23,16 @@ namespace Lifespan
         private IModLogger Log => _log;
  
         public DeathManager(IPluginContext ctx, LifespanConfig config, AgeTracker ageTracker, ModRandomStream random)
+            : this(ctx, config, ageTracker, random, ageTracker != null ? ageTracker.State.Deaths : null)
+        {
+        }
+
+        internal DeathManager(IPluginContext ctx, LifespanConfig config, AgeTracker ageTracker, ModRandomStream random, IDeathRecordState deathRecords)
         {
             _config = config;
             _log = ctx.Log;
             _ageTracker = ageTracker;
+            _deathRecords = deathRecords;
             _random = random;
         }
 
@@ -237,10 +244,7 @@ namespace Lifespan
         {
             if (member == null || member.isDead) return;
 
-            if (AgingPatches.Tracker != null)
-            {
-                AgingPatches.Tracker.RecordDeath(member, targetDay);
-            }
+            RecordDeath(member, targetDay);
 
             int memberId = member.GetId();
             try
@@ -378,8 +382,7 @@ namespace Lifespan
                 if (targetDay > 0) 
                 {
                     AgingPatches.SetDeathDayOverride(member.GetId(), targetDay);
-                    // Persist in AgeTracker
-                    _ageTracker?.RecordDeath(member, targetDay);
+                    RecordDeath(member, targetDay);
                 }
                 
                 member.Damage((int)FATAL_DAMAGE_AMOUNT, BaseCharacter.DamageType.Undefined, reason, false, true);
@@ -412,6 +415,15 @@ namespace Lifespan
 
             // 6. Trigger Dialog
             return ExplorationManager.Instance.ShowRadioDialog(radioParams);
+        }
+
+        private void RecordDeath(FamilyMember member, int targetDay)
+        {
+            if (member == null || _deathRecords == null) return;
+
+            int ageWeeks = _ageTracker != null ? _ageTracker.GetAgeWeeks(member) : 0;
+            _deathRecords.RecordDeath(member.GetId(), targetDay, ageWeeks);
+            Log.Info($"[Lifespan] Recorded death for {member.firstName}. Day: {targetDay}, Age: {ageWeeks / LifespanConstants.WeeksPerYear}y.");
         }
     }
 }
