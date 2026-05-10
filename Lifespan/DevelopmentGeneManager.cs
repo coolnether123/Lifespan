@@ -341,7 +341,17 @@ namespace Lifespan
             {
                 string message = messages[_random.Range(0, messages.Length)];
                 if (_scheduler != null) _scheduler.Enqueue(member, message, false, DialogueScheduler.Priority.Reactive);
-                else try { member.Say(message); } catch { }
+                else
+                {
+                    try
+                    {
+                        member.Say(message);
+                    }
+                    catch (System.Exception ex)
+                    {
+                        if (Log.IsDebugEnabled) Log.Debug($"Failed to show development speech line: {ex.Message}");
+                    }
+                }
             }
         }
 

@@ -128,8 +128,8 @@ namespace Lifespan
         {
             string newMeshId = member.isMale ? "man" : "woman";
 
-            try { Traverse.Create(member).Field("m_child").SetValue(false); } catch { }
-            try { Traverse.Create(member).Field("m_characterMeshId").SetValue(newMeshId); } catch { }
+            TrySetMemberField(member, "m_child", false, "clear child gameplay flag");
+            TrySetMemberField(member, "m_characterMeshId", newMeshId, "set adult mesh id");
 
             if (member.BaseStats != null)
             {
@@ -179,8 +179,28 @@ namespace Lifespan
                 }
             }
 
-            try { Traverse.Create(member).Method("OnTraitsChanged").GetValue(); } catch { }
+            try
+            {
+                Traverse.Create(member).Method("OnTraitsChanged").GetValue();
+            }
+            catch (Exception ex)
+            {
+                Log.Warn($"Failed to refresh traits after adult transition for {member.firstName}: {ex.Message}");
+            }
+
             UpdateSaveTemp(member);
+        }
+
+        private void TrySetMemberField<T>(FamilyMember member, string fieldName, T value, string operation)
+        {
+            try
+            {
+                Traverse.Create(member).Field(fieldName).SetValue(value);
+            }
+            catch (Exception ex)
+            {
+                Log.Error($"Failed to {operation} for {member.firstName}: {ex.Message}");
+            }
         }
 
         private bool TryApplyAdultVisualState(FamilyMember member)

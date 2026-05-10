@@ -57,7 +57,17 @@ namespace Lifespan
         private void TriggerSpeech(FamilyMember member, string text, DialogueScheduler.Priority priority = DialogueScheduler.Priority.Routine, System.Func<bool> validation = null)
         {
             if (_scheduler != null) _scheduler.Enqueue(member, text, false, priority, validation);
-            else try { if (validation == null || validation()) member.Say(text); } catch { }
+            else
+            {
+                try
+                {
+                    if (validation == null || validation()) member.Say(text);
+                }
+                catch (Exception ex)
+                {
+                    if (Log.IsDebugEnabled) Log.Debug($"Failed to show illness speech line: {ex.Message}");
+                }
+            }
         }
 
         public void ProcessElderIllnessRoll(FamilyMember member, int currentAgeWeeks)

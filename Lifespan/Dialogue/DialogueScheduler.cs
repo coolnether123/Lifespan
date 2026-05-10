@@ -264,7 +264,10 @@ namespace Lifespan
                 {
                     msg.Member.Say(msg.Text);
                 }
-                catch { }
+                catch (System.Exception ex)
+                {
+                    if (_log.IsDebugEnabled) _log.Debug($"[DialogueScheduler] Failed to show speech line: {ex.Message}");
+                }
             }
         }
 

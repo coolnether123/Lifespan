@@ -50,7 +50,17 @@ namespace Lifespan
         private void TriggerSpeech(FamilyMember member, string text, DialogueScheduler.Priority priority = DialogueScheduler.Priority.Routine)
         {
             if (_scheduler != null) _scheduler.Enqueue(member, text, false, priority);
-            else try { member.Say(text); } catch { }
+            else
+            {
+                try
+                {
+                    member.Say(text);
+                }
+                catch (Exception ex)
+                {
+                    if (Log.IsDebugEnabled) Log.Debug($"Failed to show death speech line: {ex.Message}");
+                }
+            }
         }
 
         public void Reset()
@@ -340,7 +350,10 @@ namespace Lifespan
                     var name = party.currentRegion.GetLocalisedName();
                     if (!string.IsNullOrEmpty(name)) biomeName = name;
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    if (Log.IsDebugEnabled) Log.Debug($"Could not resolve expedition biome name for death dialogue; using fallback. Error: {ex.Message}");
+                }
             }
 
             // 3. Select Message

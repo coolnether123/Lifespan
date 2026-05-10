@@ -743,7 +743,15 @@ namespace Lifespan
             }
 
             Color currentHair = Color.black;
-            try { currentHair = Traverse.Create(member).Field("m_hairColor").GetValue<Color>(); } catch {}
+            try
+            {
+                currentHair = Traverse.Create(member).Field("m_hairColor").GetValue<Color>();
+            }
+            catch (Exception ex)
+            {
+                if (Log.IsDebugEnabled) Log.Debug($"Could not read hair color for {member.firstName}; using black fallback. Error: {ex.Message}");
+            }
+
             if (currentHair == default(Color)) currentHair = Color.black; 
 
             var profile = new GreyProfile();

@@ -408,8 +408,10 @@ namespace Lifespan
                         _activeTransitions.RemoveAt(i);
                     }
                 }
-                catch
+                catch (Exception ex)
                 {
+                    string memberName = context.Member != null ? context.Member.firstName : "<unknown>";
+                    Log.Warn($"Hair transition failed for {memberName}; cancelling visual transition. Error: {ex.Message}");
                     _activeTransitions.RemoveAt(i);
                 }
             }
@@ -442,7 +444,14 @@ namespace Lifespan
                 // Capture OLD color before we update it
                 Color oldColor = Color.white;
                 // Try to get current value from field
-                try { oldColor = Traverse.Create(member).Field("m_hairColor").GetValue<Color>(); } catch {}
+                try
+                {
+                    oldColor = Traverse.Create(member).Field("m_hairColor").GetValue<Color>();
+                }
+                catch (Exception ex)
+                {
+                    if (Log.IsDebugEnabled) Log.Debug($"Could not read current hair color for {member.firstName}; using white transition fallback. Error: {ex.Message}");
+                }
 
                 // Apply field (Data) - this updates the "truth"
                 Traverse.Create(member).Field("m_hairColor").SetValue(newColor);
@@ -482,10 +491,10 @@ namespace Lifespan
                     }
                 }
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                // Warn once per member/session ideally, but fine for now
-                // Log.Warn($"[DEBUG] Greying failed for {member.firstName}");
+                string memberName = member != null ? member.firstName : "<unknown>";
+                Log.Warn($"Hair greying failed for {memberName}: {ex.Message}");
             }
         }
 
