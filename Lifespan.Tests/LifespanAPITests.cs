@@ -78,6 +78,24 @@ namespace Lifespan.Tests
             Assert.AreSame(visitor, tracked[0]);
         }
 
+        [Test]
+        public void SetConfiguration_UpdatesSharedConfigInstance()
+        {
+            var updated = new LifespanConfig
+            {
+                weeksAgedPerInterval = 13,
+                adultAgeYears = 20,
+                elderAgeYears = 10
+            };
+
+            _api.SetConfiguration(updated);
+
+            Assert.AreSame(_config, _api.GetConfiguration());
+            Assert.AreEqual(13, _config.weeksAgedPerInterval);
+            Assert.AreEqual(20, _config.adultAgeYears);
+            Assert.AreEqual(21, _config.elderAgeYears);
+        }
+
         private static NpcVisitor CreateNpc(int id)
         {
             var visitor = (NpcVisitor)FormatterServices.GetUninitializedObject(typeof(NpcVisitor));

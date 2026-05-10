@@ -141,23 +141,24 @@ namespace Lifespan
         {
             if (config != null)
             {
-                config.ValidateAndClamp();
-                
-                // Update the shared config object reference (effectively updating the plugin's state)
-                _config = config;
-                
-                // Also update the plugin's public reference if possible, or assume they share the same object ref if passed around correctly.
-                // In this case, we update the object the API holds. Since the Plugin passed it by reference, 
-                // we should copy values if we want to retain the original object instance, OR assume caller replaces it.
-                // Best practice: Overwrite values on the existing instance to maintain references held by other managers.
-                // However, since we don't have a Copy method, and existing code replaced _config, we'll stick to that but we MUST ensure persistence.
+                if (_config == null)
+                {
+                    _config = config;
+                    _config.ValidateAndClamp();
+                }
+                else
+                {
+                    _config.CopyFrom(config);
+                }
                 
                 try
                 {
-                    // Update DevGeneManager with new hot-reloaded values
+                    // Keep managers with cached config references aligned after API-driven settings changes.
                     if (_devGeneManager != null) _devGeneManager.RefreshSettings(_config);
+                    if (_childManager != null) _childManager.RefreshSettings(_config);
 
-                    if (_ctx.Mod.SettingsProvider is ModAPI.Spine.SettingsController controller)
+                    var mod = _ctx != null ? _ctx.Mod : null;
+                    if (mod != null && mod.SettingsProvider is ModAPI.Spine.SettingsController controller)
                     {
                         controller.Save();
                         _log.Info("Configuration updated and saved via SettingsController.");

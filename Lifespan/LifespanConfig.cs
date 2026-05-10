@@ -1,4 +1,5 @@
 using System;
+using System.Reflection;
 using ModAPI.Spine;
 using ModAPI.Attributes;
 
@@ -320,6 +321,24 @@ namespace Lifespan
             recruiterStdDev = ClampInt(recruiterStdDev, 1, 30);
             traderMeanAge = ClampInt(traderMeanAge, 18, 80);
             traderStdDev = ClampInt(traderStdDev, 1, 30);
+        }
+
+        public void CopyFrom(LifespanConfig source)
+        {
+            if (source == null) return;
+
+            if (ReferenceEquals(this, source))
+            {
+                ValidateAndClamp();
+                return;
+            }
+
+            foreach (FieldInfo field in typeof(LifespanConfig).GetFields(BindingFlags.Instance | BindingFlags.Public))
+            {
+                field.SetValue(this, field.GetValue(source));
+            }
+
+            ValidateAndClamp();
         }
 
         public bool CheckElderAge(object newVal)
