@@ -1,0 +1,73 @@
+using HarmonyLib;
+using ModAPI.Core;
+using System;
+using System.Collections.Generic;
+using UnityEngine;
+
+namespace Lifespan
+{
+    public static class ExpeditionUIPatches
+    {
+        public static class PartyMapPanel_OnShow_Patch
+        {
+            public static void Postfix(PartyMapPanel __instance)
+            {
+                try
+                {
+                    if (__instance == null || __instance.gameObject == null || !__instance.gameObject.activeInHierarchy)
+                        return;
+                    if (ExplorationManager.Instance == null)
+                        return;
+
+                    // Refresh the party list. 
+                    // This fixes the bug where deaths during radio sequences leave "ghost" pages in the UI.
+                    var parties = ExplorationManager.Instance.GetAllExplorarionParties();
+                    if (parties == null)
+                        return;
+                    Traverse.Create(__instance).Field("m_allParties").SetValue(parties);
+
+                    int count = parties.Count;
+                    int currentIndex = Traverse.Create(__instance).Field("m_currentPartyIndex").GetValue<int>();
+
+                    if (count <= 0)
+                    {
+                        Traverse.Create(__instance).Field("m_currentPartyIndex").SetValue(0);
+                        return;
+                    }
+
+                    // Clamp index
+                    if (currentIndex >= count)
+                    {
+                        currentIndex = Math.Max(0, count - 1);
+                        Traverse.Create(__instance).Field("m_currentPartyIndex").SetValue(currentIndex);
+                    }
+
+                    // Sync the Map UI
+                    UI_ExpeditionMap mapUI = Traverse.Create(__instance).Field("m_mapUI").GetValue<UI_ExpeditionMap>();
+                    if (mapUI != null)
+                    {
+                        mapUI.shownPartyIndex = currentIndex;
+                    }
+
+                    // Refresh the visual elements (labels, health bars, etc.)
+                    if (__instance.gameObject.activeInHierarchy)
+                    {
+                        try
+                        {
+                            Traverse.Create(__instance).Method("UpdateUI").GetValue();
+                        }
+                        catch (Exception ex)
+                        {
+                            LifespanPlugin.Instance.Log.Warn($"PartyMapPanel UpdateUI failed: {ex.Message}");
+                            // Continue anyway - UI still renders, just not refreshed
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                   LifespanPlugin.Instance.Log.Error($"Expedition UI refresh error: {ex.Message}");
+                }
+            }
+        }
+    }
+}
