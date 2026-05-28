@@ -33,6 +33,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="Assets\Crib\baby_crib_rolling.png">
+      <LogicalName>Lifespan.Assets.Crib.baby_crib_rolling.png</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
+  <ItemGroup>
     <Reference Include="0Harmony">
       <HintPath>$(ShelteredSmmRoot)\bin\0Harmony.dll</HintPath>
       <Private>False</Private>

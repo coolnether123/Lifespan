@@ -82,6 +82,15 @@ namespace Lifespan.Tests
         }
 
         [Test]
+        public void CribVisualAgeRange_IsOneAndTwoOnly()
+        {
+            Assert.IsFalse(BabyCribVisualManager.IsCribAgeYears(0));
+            Assert.IsTrue(BabyCribVisualManager.IsCribAgeYears(1));
+            Assert.IsTrue(BabyCribVisualManager.IsCribAgeYears(2));
+            Assert.IsFalse(BabyCribVisualManager.IsCribAgeYears(3));
+        }
+
+        [Test]
         [Ignore("Temporarily disabled to bypass stale DLL issues")]
         public void Newborn_IsImmobile_AndNeedsCare()
         {
