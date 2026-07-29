@@ -74,7 +74,7 @@ At the death risk threshold (default: 75 years):
 
 ## Configuration
 
-All settings are exposed through the shared ShelteredAPI 1.3 settings UI with:
+All settings are exposed through the shared ShelteredAPI 2.0 settings UI with:
 - **Simple View**: Core gameplay controls only.
 - **Advanced View**: Full tuning options and debug controls.
 
@@ -154,7 +154,7 @@ Saved external age records without a currently loaded `BaseCharacter` are preser
 - Lifespan owns aging, life-stage transitions, elder illness, natural death, and growth-potential timing.
 - Gene Manager owns trait and gene systems. Lifespan may read vanilla traits for aging effects, but it should not become the owner of trait assignment or gene management.
 - Family Expansion owns conception, pregnancy, birth, and postpartum handoff. Lifespan only consumes newborn/age integration calls.
-- Shared settings UI rendering is owned by ShelteredAPI 1.3. Lifespan only provides settings definitions.
+- Shared settings UI rendering is owned by ShelteredAPI 2.0. Lifespan only provides settings definitions.
 
 ## Events
 
@@ -176,7 +176,7 @@ ModEventBus.Subscribe<CharacterAgedUpArgs>("Lifespan.CharacterAgedUp", args =>
 
 ## Installation
 
-1. Ensure Sheltered Mod Manager is installed with ModAPI/ShelteredAPI 1.3.
+1. Ensure Sheltered Mod Manager is installed with ModAPI/ShelteredAPI 2.0.
 2. Copy the `Lifespan` folder to `Sheltered/mods/`
 3. Enable the mod in the Mod Manager
 4. **Recommended**: Configure your preferred aging speed in the Settings menu before starting a long playthrough.
@@ -200,7 +200,7 @@ ModEventBus.Subscribe<CharacterAgedUpArgs>("Lifespan.CharacterAgedUp", args =>
 
 ## Credits
 
-Created for the Sheltered Mod Loader with ModAPI/ShelteredAPI 1.3.
+Created for the Sheltered Mod Loader with ModAPI/ShelteredAPI 2.0.
 
 ## License
 
