@@ -69,6 +69,7 @@ namespace Lifespan
             _milestoneManager?.Reset();
             _deathManager?.Reset();
             _expeditionDialogueManager?.Reset();
+            AgingPatches.ResetIllnessStatModifiers();
         }
 
         /// <summary>
@@ -566,6 +567,7 @@ namespace Lifespan
             ShelteredEvents.NewGame -= OnNewGame;
             AgingPatches.OnNewWeekCallback = null;
             AgingPatches.IllnessState = null;
+            AgingPatches.ResetIllnessStatModifiers();
             GameOverPatches.DeathRecords = null;
             Log.Info("Mod shut down.");
         }

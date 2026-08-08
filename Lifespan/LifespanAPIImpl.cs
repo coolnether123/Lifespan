@@ -43,6 +43,7 @@ namespace Lifespan
         public int GenerateAgeForNPC(BaseCharacter character, AgeContext context) => _ageTracker.GenerateAgeForContext(character, context);
         public int GetCharacterAgeWeeks(BaseCharacter character) => _ageTracker.GetAgeWeeks(character);
         internal bool TryGetCharacterAgeWeeks(BaseCharacter character, out int ageWeeks) => _ageTracker.TryGetAgeWeeks(character, out ageWeeks);
+        internal void TransferAdoptedCharacterAge(int externalId, FamilyMember member, int ageWeeks) => _ageTracker.TransferExternalCharacterAge(externalId, member, ageWeeks);
         public List<BaseCharacter> GetTrackedExternalCharacters() => _ageTracker.GetTrackedExternalCharacters();
         
         public int IncrementCharacterAge(BaseCharacter character, int weeks)

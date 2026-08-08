@@ -431,6 +431,20 @@ namespace Lifespan
         }
 
         /// <summary>
+        /// Moves an NPC's saved age into its new FamilyMember record after recruitment.
+        /// The vanilla adoption flow can assign a different ID to the new component, so
+        /// the original external record must be removed explicitly.
+        /// </summary>
+        internal void TransferExternalCharacterAge(int externalId, FamilyMember member, int ageWeeks)
+        {
+            if (object.ReferenceEquals(member, null)) return;
+
+            SetAgeWeeks(member, ageWeeks);
+            _state.Ages.RemoveExternalCharacter(externalId);
+            _externalCharacterRefs.Remove(externalId);
+        }
+
+        /// <summary>
         /// Returns all NPC/Explorer IDs currently in tracking.
         /// </summary>
         public List<int> GetAllTrackedExternalIds()

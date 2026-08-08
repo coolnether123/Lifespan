@@ -17,6 +17,33 @@ namespace Lifespan
 
         private static readonly object _deathDayLock = new object();
         private static Dictionary<int, int> _pendingDeathDays = new Dictionary<int, int>();
+        private sealed class IllnessModifierState
+        {
+            public int Intelligence;
+            public int Strength;
+            public int Dexterity;
+        }
+
+        private static Dictionary<int, IllnessModifierState> _appliedIllnessModifiers = new Dictionary<int, IllnessModifierState>();
+
+        internal static void ResetIllnessStatModifiers()
+        {
+            _appliedIllnessModifiers.Clear();
+        }
+
+        private static void DebugLog(IModLogger log, bool enabled, string message)
+        {
+            if (!enabled || log == null) return;
+
+            try
+            {
+                log.Debug(message);
+            }
+            catch
+            {
+                // Logging must not prevent gameplay state from being applied.
+            }
+        }
 
         public static void SetDeathDayOverride(int memberId, int day)
         {
@@ -140,13 +167,50 @@ namespace Lifespan
 
         internal static void ApplyIllnessStatModifiers(FamilyMember member)
         {
-            if (IllnessState == null || IllnessManager == null || member?.BaseStats == null) return;
+            if (IllnessState == null) return;
+            if (IllnessManager == null) return;
+            if (object.ReferenceEquals(member, null)) return;
 
-            var illnesses = IllnessState.GetIllnesses(member.GetId()) ?? new List<string>();
-            var cfg = LifespanPlugin.Instance?.Config;
+            BaseStats stats = member.BaseStats;
+            if (stats == null) return;
+
+            int memberId = member.GetId();
+            var illnesses = IllnessState.GetIllnesses(memberId) ?? new List<string>();
+            LifespanPlugin plugin = LifespanPlugin.Instance;
+            var cfg = plugin != null ? plugin.Config : null;
+            IModLogger pluginLog = null;
+            if (plugin != null)
+            {
+                try
+                {
+                    pluginLog = plugin.Log;
+                }
+                catch
+                {
+                    // Tests and early lifecycle callbacks can observe the plugin before its logger is ready.
+                }
+            }
+            bool debugLogging = false;
+            if (pluginLog != null)
+            {
+                try
+                {
+                    debugLogging = pluginLog.IsDebugEnabled;
+                }
+                catch
+                {
+                    // Logging must not prevent illness state from being applied.
+                }
+            }
  
-            if (LifespanPlugin.Instance != null && LifespanPlugin.Instance.Log.IsDebugEnabled) LifespanPlugin.Instance.Log.Debug($"ApplyIllnessStatModifiers for {member.firstName} (Illnesses: {illnesses.Count})");
+            DebugLog(pluginLog, debugLogging, $"ApplyIllnessStatModifiers for {member.firstName} (Illnesses: {illnesses.Count})");
             
+            IllnessModifierState previous;
+            if (!_appliedIllnessModifiers.TryGetValue(memberId, out previous))
+            {
+                previous = new IllnessModifierState();
+            }
+
             int intMod = 0;
             int strMod = 0;
             int dexMod = 0;
@@ -156,36 +220,50 @@ namespace Lifespan
                 if (id == ElderIllnessManager.ILLNESS_DEMENTIA)
                 {
                     float intMultiplier = (cfg != null) ? Mathf.Clamp01(cfg.dementiaIntModifier) : 0.5f;
-                    int baseInt = member.BaseStats.Intelligence != null
-                        ? Math.Max(0, member.BaseStats.Intelligence.Level - member.BaseStats.Intelligence.LevelModifier)
+                    int baseInt = stats.Intelligence != null
+                        ? Math.Max(0, stats.Intelligence.Level - stats.Intelligence.LevelModifier)
                         : 0;
                     intMod -= Mathf.RoundToInt(baseInt * (1f - intMultiplier));
-                    if (LifespanPlugin.Instance.Log.IsDebugEnabled) LifespanPlugin.Instance.Log.Debug("Dementia detected, applying Intelligence modifier.");
+                    DebugLog(pluginLog, debugLogging, "Dementia detected, applying Intelligence modifier.");
                 }
                 if (id == ElderIllnessManager.ILLNESS_FRAILTY)
                 {
                     float strMultiplier = (cfg != null) ? Mathf.Clamp01(cfg.frailtyStrModifier) : 0.6f;
-                    int baseStr = member.BaseStats.Strength != null
-                        ? Math.Max(0, member.BaseStats.Strength.Level - member.BaseStats.Strength.LevelModifier)
+                    int baseStr = stats.Strength != null
+                        ? Math.Max(0, stats.Strength.Level - stats.Strength.LevelModifier)
                         : 0;
                     strMod -= Mathf.RoundToInt(baseStr * (1f - strMultiplier));
-                    if (LifespanPlugin.Instance.Log.IsDebugEnabled) LifespanPlugin.Instance.Log.Debug("Frailty detected, applying Strength modifier.");
+                    DebugLog(pluginLog, debugLogging, "Frailty detected, applying Strength modifier.");
                 }
                 if (id == ElderIllnessManager.ILLNESS_ARTHRITIS)
                 {
                     float dexMultiplier = (cfg != null) ? Mathf.Clamp01(cfg.arthritisSpeedModifier) : 0.6f;
-                    int baseDex = member.BaseStats.Dexterity != null
-                        ? Math.Max(0, member.BaseStats.Dexterity.Level - member.BaseStats.Dexterity.LevelModifier)
+                    int baseDex = stats.Dexterity != null
+                        ? Math.Max(0, stats.Dexterity.Level - stats.Dexterity.LevelModifier)
                         : 0;
                     dexMod -= Mathf.RoundToInt(baseDex * (1f - dexMultiplier));
-                    if (LifespanPlugin.Instance.Log.IsDebugEnabled) LifespanPlugin.Instance.Log.Debug("Arthritis detected, applying Dexterity modifier.");
+                    DebugLog(pluginLog, debugLogging, "Arthritis detected, applying Dexterity modifier.");
                 }
             }
 
-            if (member.BaseStats.Intelligence != null) member.BaseStats.Intelligence.SetLevelModifier(intMod);
-            if (member.BaseStats.Strength != null) member.BaseStats.Strength.SetLevelModifier(strMod);
-            if (member.BaseStats.Dexterity != null) member.BaseStats.Dexterity.SetLevelModifier(dexMod);
-            if (LifespanPlugin.Instance != null && LifespanPlugin.Instance.Log.IsDebugEnabled) LifespanPlugin.Instance.Log.Debug($"Final modifiers applied for {member.firstName} - Int: {intMod}, Str: {strMod}, Dex: {dexMod}");
+            if (stats.Intelligence != null) stats.Intelligence.SetLevelModifier(stats.Intelligence.LevelModifier - previous.Intelligence + intMod);
+            if (stats.Strength != null) stats.Strength.SetLevelModifier(stats.Strength.LevelModifier - previous.Strength + strMod);
+            if (stats.Dexterity != null) stats.Dexterity.SetLevelModifier(stats.Dexterity.LevelModifier - previous.Dexterity + dexMod);
+
+            if (intMod == 0 && strMod == 0 && dexMod == 0)
+            {
+                _appliedIllnessModifiers.Remove(memberId);
+            }
+            else
+            {
+                _appliedIllnessModifiers[memberId] = new IllnessModifierState
+                {
+                    Intelligence = intMod,
+                    Strength = strMod,
+                    Dexterity = dexMod
+                };
+            }
+            DebugLog(pluginLog, debugLogging, $"Final modifiers applied for {member.firstName} - Int: {intMod}, Str: {strMod}, Dex: {dexMod}");
         }
     }
 }

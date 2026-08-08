@@ -15,6 +15,7 @@ namespace Lifespan
         int GetAgeWeeksOrDefault(int id);
         void SetFamilyAgeWeeks(int id, int ageWeeks);
         void SetExternalAgeWeeks(int id, int ageWeeks);
+        void RemoveExternalCharacter(int id);
         List<int> GetAllExternalIds();
         List<int> GetFamilyIds();
         void RemoveFamilyMember(int id);
@@ -146,6 +147,11 @@ namespace Lifespan
         public void SetExternalAgeWeeks(int id, int ageWeeks)
         {
             _state.Data.externalCharacterAges[id] = Math.Max(0, ageWeeks);
+        }
+
+        public void RemoveExternalCharacter(int id)
+        {
+            _state.Data.externalCharacterAges.Remove(id);
         }
 
         public List<int> GetAllExternalIds()

@@ -120,6 +120,22 @@ namespace Lifespan.Tests
         }
 
         [Test]
+        public void TransferAdoptedCharacterAge_MovesSavedExternalRecordToFamilyMember()
+        {
+            var visitor = CreateNpc(507);
+            _api.SetCharacterAgeWeeks(visitor, 100);
+
+            var member = (FamilyMember)FormatterServices.GetUninitializedObject(typeof(FamilyMember));
+            SetField(member, typeof(FamilyMember), "familyId", 607);
+
+            _api.TransferAdoptedCharacterAge(507, member, 100);
+
+            Assert.AreEqual(100, _api.GetCharacterAgeWeeks(member));
+            CollectionAssert.DoesNotContain(_tracker.GetAllTrackedExternalIds(), 507);
+            Assert.IsEmpty(_api.GetTrackedExternalCharacters());
+        }
+
+        [Test]
         public void SetConfiguration_UpdatesSharedConfigInstance()
         {
             var updated = new LifespanConfig

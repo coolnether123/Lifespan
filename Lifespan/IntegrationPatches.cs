@@ -80,6 +80,7 @@ namespace Lifespan
             public sealed class AdoptionState
             {
                 public bool HasAge;
+                public int ExternalId;
                 public int AgeWeeks;
                 public GameObject GameObject;
             }
@@ -91,6 +92,7 @@ namespace Lifespan
                 if (npc == null || LifespanPlugin.Instance == null) return;
 
                 __state.GameObject = npc.gameObject;
+                __state.ExternalId = npc.GetId();
                 LifespanAPIImpl api = LifespanPlugin.Instance.Api as LifespanAPIImpl;
                 if (api != null)
                 {
@@ -119,7 +121,14 @@ namespace Lifespan
 
                     if (newMember != null)
                     {
-                        LifespanPlugin.Instance.Api.SetCharacterAgeWeeks(newMember, __state.AgeWeeks);
+                        LifespanAPIImpl api = LifespanPlugin.Instance.Api as LifespanAPIImpl;
+                        if (api == null)
+                        {
+                            LifespanPlugin.Instance.Log.Warn("AdoptNpc succeeded but the Lifespan API implementation was unavailable for age transfer.");
+                            return;
+                        }
+
+                        api.TransferAdoptedCharacterAge(__state.ExternalId, newMember, __state.AgeWeeks);
                         LifespanPlugin.Instance.Log.Info($"Transferred age {__state.AgeWeeks / LifespanConstants.WeeksPerYear}y from NPC to new FamilyMember {newMember.firstName}.");
                     }
                     else

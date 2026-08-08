@@ -224,6 +224,39 @@ namespace Lifespan.Tests
         }
 
         [Test]
+        public void IllnessModifiers_PreserveUnrelatedStatModifierWhenAppliedAndRemoved()
+        {
+            var member = (FamilyMember)CreateDummyMember();
+            TrySetField(member, "m_CachedPtr", new IntPtr(1));
+            TrySetField(member, "familyId", 701);
+
+            var stats = new BaseStats();
+            stats.Initialize();
+            TrySetField(member, "base_stats", stats);
+            stats.Intelligence.SetInitialLevel(10, 20);
+            stats.Intelligence.SetLevelModifier(3);
+
+            AgingPatches.IllnessManager = _manager;
+            AgingPatches.IllnessState = _ageTracker.State.Illnesses;
+            AgingPatches.ResetIllnessStatModifiers();
+
+            Assert.IsNotNull(AgingPatches.IllnessManager);
+            Assert.IsNotNull(AgingPatches.IllnessState);
+            Assert.IsNotNull(member.BaseStats);
+            Assert.IsNotNull(stats.Intelligence);
+
+            _manager.AddIllnessExternal(member, ElderIllnessManager.ILLNESS_DEMENTIA);
+
+            Assert.AreEqual(-2, stats.Intelligence.LevelModifier);
+            Assert.AreEqual(8, stats.Intelligence.Level);
+
+            _manager.RemoveIllnessExternal(member, ElderIllnessManager.ILLNESS_DEMENTIA);
+
+            Assert.AreEqual(3, stats.Intelligence.LevelModifier);
+            Assert.AreEqual(13, stats.Intelligence.Level);
+        }
+
+        [Test]
         [Category("Simulation")]
         public void VerifyTriggerFrequency()
         {
