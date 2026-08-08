@@ -149,6 +149,19 @@ lifespanAPI.UpdateExternalCharacters(1);
 
 Saved external age records without a currently loaded `BaseCharacter` are preserved, but they are not bulk-aged or emitted through `OnCharacterAged` until a live character is registered again.
 
+### Compatibility contract
+
+The public API is registered as `com.lifespan.api` and is compiled against ModAPI/ShelteredAPI 2.0.0.0. Family and integration mods should depend on the `ILifespanAPI` interface rather than Lifespan implementation classes.
+
+- Ages are integer biological weeks; one biological year is 52 weeks. Negative values passed to an age setter are stored as 0. Age 0 is a valid newborn age, while an untracked character also reads as 0 through the non-`Try` getter.
+- Family age records are hydrated at session load. Call age-dependent APIs after the load/session event; a family lookup made before hydration returns 0 and does not create a record. Fresh family members are initialized once after hydration, based on their child/adult status and current configuration.
+- `GenerateAgeForNPC` is idempotent for a stable character ID. For external NPCs, the live character object must be registered with `GenerateAgeForNPC` or `SetCharacterAgeWeeks(BaseCharacter)` for weekly bulk aging and `OnCharacterAged` delivery. The ID must remain stable while the NPC exists; names are not identity keys.
+- The vanilla `FamilyManager.AdoptNpc(NpcVisitor)` path transfers the NPC's saved age to the resulting `FamilyMember` and removes the external record. Mods that replace or bypass that adoption path must transfer the age explicitly to the new family member.
+- `OnBeforeCharacterAged` runs once per character; every subscribed handler must return `true` for aging to proceed. A handler exception cancels that character's increment. `OnCharacterAged` fires only after the new age is stored, and subscriber exceptions do not undo the stored age.
+- The family weekly pipeline publishes `Lifespan.CharacterAgedUp`; the `OnCharacterAged` API event covers explicit/API external-character increments. These are separate hooks.
+- `GetActiveIllnesses` returns a snapshot. Use `AddIllness` and `RemoveIllness` for changes. Stable built-in IDs are the `lifespan.illness.*` constants; custom IDs are persisted but have no built-in gameplay effect.
+- `GetConfiguration` should be treated as read-only. Use `SetConfiguration` to apply a complete configuration; it clamps cross-field invariants and persists through the settings provider when available.
+
 ## Ownership Boundaries
 
 - Lifespan owns aging, life-stage transitions, elder illness, natural death, and growth-potential timing.

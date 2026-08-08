@@ -19,6 +19,7 @@ namespace Lifespan
         private static Dictionary<int, int> _pendingDeathDays = new Dictionary<int, int>();
         private sealed class IllnessModifierState
         {
+            public FamilyMember Member;
             public int Intelligence;
             public int Strength;
             public int Dexterity;
@@ -28,7 +29,33 @@ namespace Lifespan
 
         internal static void ResetIllnessStatModifiers()
         {
+            foreach (IllnessModifierState applied in _appliedIllnessModifiers.Values)
+            {
+                if (applied == null || applied.Member == null) continue;
+
+                try
+                {
+                    BaseStats stats = applied.Member.BaseStats;
+                    if (stats == null) continue;
+
+                    RemoveAppliedModifier(stats.Intelligence, applied.Intelligence);
+                    RemoveAppliedModifier(stats.Strength, applied.Strength);
+                    RemoveAppliedModifier(stats.Dexterity, applied.Dexterity);
+                }
+                catch
+                {
+                    // A reset can race a destroyed Unity character. The cached state
+                    // must still be discarded so a later session cannot stack it.
+                }
+            }
+
             _appliedIllnessModifiers.Clear();
+        }
+
+        private static void RemoveAppliedModifier(BaseStat stat, int modifier)
+        {
+            if (stat == null || modifier == 0) return;
+            stat.SetLevelModifier(stat.LevelModifier - modifier);
         }
 
         private static void DebugLog(IModLogger log, bool enabled, string message)
@@ -258,6 +285,7 @@ namespace Lifespan
             {
                 _appliedIllnessModifiers[memberId] = new IllnessModifierState
                 {
+                    Member = member,
                     Intelligence = intMod,
                     Strength = strMod,
                     Dexterity = dexMod

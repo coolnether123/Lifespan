@@ -314,7 +314,7 @@ namespace Lifespan
             }
         }
 
-        public List<string> GetActiveIllnesses(FamilyMember member) => GetIllnesses(member);
+        public List<string> GetActiveIllnesses(FamilyMember member) => new List<string>(GetIllnesses(member));
 
         public void AddIllnessExternal(FamilyMember member, string id)
         {

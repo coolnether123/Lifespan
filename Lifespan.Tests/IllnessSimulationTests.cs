@@ -250,6 +250,20 @@ namespace Lifespan.Tests
             Assert.AreEqual(-2, stats.Intelligence.LevelModifier);
             Assert.AreEqual(8, stats.Intelligence.Level);
 
+            var illnessSnapshot = _manager.GetActiveIllnesses(member);
+            illnessSnapshot.Clear();
+            CollectionAssert.Contains(_manager.GetActiveIllnesses(member), ElderIllnessManager.ILLNESS_DEMENTIA);
+
+            AgingPatches.ResetIllnessStatModifiers();
+
+            Assert.AreEqual(3, stats.Intelligence.LevelModifier);
+            Assert.AreEqual(13, stats.Intelligence.Level);
+
+            AgingPatches.ApplyIllnessStatModifiers(member);
+
+            Assert.AreEqual(-2, stats.Intelligence.LevelModifier);
+            Assert.AreEqual(8, stats.Intelligence.Level);
+
             _manager.RemoveIllnessExternal(member, ElderIllnessManager.ILLNESS_DEMENTIA);
 
             Assert.AreEqual(3, stats.Intelligence.LevelModifier);

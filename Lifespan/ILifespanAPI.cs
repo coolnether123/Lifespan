@@ -61,7 +61,8 @@ namespace Lifespan
         bool IsElder(FamilyMember member);
 
         /// <summary>
-        /// Gets the list of active illnesses for a character.
+        /// Gets a snapshot of the active illnesses for a character. Treat the returned
+        /// list as read-only; use AddIllness or RemoveIllness to change saved state.
         /// </summary>
         List<string> GetActiveIllnesses(FamilyMember member);
 

@@ -123,14 +123,16 @@ namespace Lifespan.Tests
         public void TransferAdoptedCharacterAge_MovesSavedExternalRecordToFamilyMember()
         {
             var visitor = CreateNpc(507);
-            _api.SetCharacterAgeWeeks(visitor, 100);
+            int elderAgeWeeks = _config.elderAgeYears * LifespanConstants.WeeksPerYear;
+            _api.SetCharacterAgeWeeks(visitor, elderAgeWeeks);
 
             var member = (FamilyMember)FormatterServices.GetUninitializedObject(typeof(FamilyMember));
             SetField(member, typeof(FamilyMember), "familyId", 607);
 
-            _api.TransferAdoptedCharacterAge(507, member, 100);
+            _api.TransferAdoptedCharacterAge(507, member, elderAgeWeeks);
 
-            Assert.AreEqual(100, _api.GetCharacterAgeWeeks(member));
+            Assert.AreEqual(elderAgeWeeks, _api.GetCharacterAgeWeeks(member));
+            Assert.IsTrue(_api.IsElder(member));
             CollectionAssert.DoesNotContain(_tracker.GetAllTrackedExternalIds(), 507);
             Assert.IsEmpty(_api.GetTrackedExternalCharacters());
         }
