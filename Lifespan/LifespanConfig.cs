@@ -265,8 +265,10 @@ namespace Lifespan
             initialChildAgeMinYears = ClampInt(initialChildAgeMinYears, 0, 30);
             initialChildAgeMaxYears = ClampInt(initialChildAgeMaxYears, initialChildAgeMinYears, 30);
 
-            adultAgeYears = ClampInt(adultAgeYears, 1, 100);
+            // Keep room for an elder threshold while honoring the cross-field invariant.
+            adultAgeYears = ClampInt(adultAgeYears, 1, 99);
             adultAgeYears = Math.Max(adultAgeYears, initialChildAgeMaxYears + 1);
+            adultAgeYears = Math.Min(adultAgeYears, 99);
             elderAgeYears = ClampInt(elderAgeYears, adultAgeYears + 1, 100);
 
             initialAdultAgeMinYears = ClampInt(initialAdultAgeMinYears, 18, 100);

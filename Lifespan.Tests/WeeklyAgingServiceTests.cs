@@ -58,7 +58,7 @@ namespace Lifespan.Tests
             CollectionAssert.AreEqual(
                 new[]
                 {
-                    "illness:" + expectedAge,
+                    "illness:" + expectedAge + ":" + _config.weeksAgedPerInterval,
                     "hair:" + expectedAge,
                     "development:" + expectedAge + ":" + _config.weeksAgedPerInterval,
                     "milestones:" + expectedAge,
@@ -91,6 +91,27 @@ namespace Lifespan.Tests
             Assert.AreEqual(ageAfterFirstPass, _tracker.GetAgeWeeks(member));
             Assert.AreEqual(8, _tracker.LastProcessedAgingWeek);
             CollectionAssert.IsEmpty(calls);
+        }
+
+        [Test]
+        public void ProcessNewWeek_CatchesUpMissedBiologicalTicks()
+        {
+            var member = CreateMember(105);
+            int startAge = _config.elderAgeYears * LifespanConstants.WeeksPerYear;
+            _tracker.SetAgeWeeks(member, startAge);
+            _tracker.MarkAgingWeekProcessed(8);
+
+            var calls = new List<string>();
+            var service = CreateService(12, new List<FamilyMember> { member }, calls);
+
+            service.ProcessNewWeek();
+
+            Assert.AreEqual(startAge + (4 * _config.weeksAgedPerInterval), _tracker.GetAgeWeeks(member));
+            Assert.AreEqual(12, _tracker.LastProcessedAgingWeek);
+            Assert.AreEqual(4, calls.FindAll(call => call.StartsWith("illness:")).Count);
+            Assert.AreEqual(4, calls.FindAll(call => call.StartsWith("death:")).Count);
+            Assert.AreEqual("cleanup", calls[calls.Count - 2]);
+            Assert.AreEqual("ui", calls[calls.Count - 1]);
         }
 
         [Test]
@@ -148,7 +169,7 @@ namespace Lifespan.Tests
                     IsNullMember = member => object.ReferenceEquals(member, null),
                     ShouldCancelAging = character => false,
                     TransitionToAdult = member => calls.Add("adult"),
-                    ProcessElderIllnessRoll = (member, ageWeeks) => calls.Add("illness:" + ageWeeks),
+                    ProcessElderIllnessRoll = (member, ageWeeks, elapsedWeeks) => calls.Add("illness:" + ageWeeks + ":" + elapsedWeeks),
                     ProcessHairGreying = (member, ageWeeks) => calls.Add("hair:" + ageWeeks),
                     ProcessDevelopment = (member, ageWeeks, weeksAged) => calls.Add("development:" + ageWeeks + ":" + weeksAged),
                     ProcessMilestones = (member, ageWeeks) => calls.Add("milestones:" + ageWeeks),

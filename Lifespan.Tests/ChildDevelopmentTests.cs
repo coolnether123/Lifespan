@@ -82,6 +82,21 @@ namespace Lifespan.Tests
         }
 
         [Test]
+        public void PreHydration_UsesVanillaChildFlagForCapabilities()
+        {
+            var member = (FamilyMember)FormatterServices.GetUninitializedObject(typeof(FamilyMember));
+            typeof(BaseCharacter).GetField("m_child", BindingFlags.NonPublic | BindingFlags.Instance).SetValue(member, false);
+            typeof(UnityEngine.Object).GetField("m_CachedPtr", BindingFlags.NonPublic | BindingFlags.Instance).SetValue(member, new System.IntPtr(1));
+
+            Assert.AreEqual(ChildStage.Adult, _manager.GetStage(member));
+            Assert.IsTrue(_manager.CanMove(member));
+            Assert.IsTrue(_manager.CanDoJobs(member));
+            Assert.IsTrue(_manager.CanGoOnExpedition(member, false));
+            Assert.IsTrue(_manager.IsSoloExpeditionCapable(member));
+            Assert.IsFalse(_manager.NeedsFeeding(member));
+        }
+
+        [Test]
         public void CribVisualAgeRange_IsOneAndTwoOnly()
         {
             Assert.IsFalse(BabyCribVisualManager.IsCribAgeYears(0));

@@ -71,6 +71,8 @@ namespace Lifespan
                     return new Job_ExtinguishFires();
                 case "Job_Revive":
                     return new Job_Revive();
+                case "Job_TakeStasisHazmat":
+                    return new Job_TakeStasisHazmat();
                 case ChildCareJobTypes.FeedChild:
                     return new Job_FeedChild();
                 case ChildCareJobTypes.GiveWaterChild:

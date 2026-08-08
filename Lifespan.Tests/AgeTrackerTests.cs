@@ -63,6 +63,34 @@ namespace Lifespan.Tests
         }
 
         [Test]
+        public void IncrementAge_NegativeProgressionIsNormalizedToZero()
+        {
+            var member = (FamilyMember)System.Runtime.Serialization.FormatterServices.GetUninitializedObject(typeof(FamilyMember));
+            typeof(FamilyMember).GetField("familyId", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance).SetValue(member, 127);
+
+            _tracker.SetAgeWeeks(member, 5 * LifespanConstants.WeeksPerYear);
+
+            int newAge = _tracker.IncrementAge(member, -1000);
+
+            Assert.AreEqual(0, newAge);
+            Assert.AreEqual(0, _tracker.GetAgeWeeks(member));
+        }
+
+        [Test]
+        public void GenerateAgeForContext_FamilyMemberUsesChildStatus()
+        {
+            var member = (FamilyMember)System.Runtime.Serialization.FormatterServices.GetUninitializedObject(typeof(FamilyMember));
+            typeof(FamilyMember).GetField("familyId", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance).SetValue(member, 128);
+            typeof(BaseCharacter).GetField("m_child", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance).SetValue(member, true);
+            typeof(UnityEngine.Object).GetField("m_CachedPtr", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance).SetValue(member, new System.IntPtr(1));
+
+            int ageWeeks = _tracker.GenerateAgeForContext(member, AgeContext.FamilyMember);
+
+            Assert.GreaterOrEqual(ageWeeks, _config.initialChildAgeMinYears * LifespanConstants.WeeksPerYear);
+            Assert.LessOrEqual(ageWeeks, _config.initialChildAgeMaxYears * LifespanConstants.WeeksPerYear);
+        }
+
+        [Test]
         public void IncrementAge_UsesFixedChildCutoffAtTenYears()
         {
             var member = (FamilyMember)System.Runtime.Serialization.FormatterServices.GetUninitializedObject(typeof(FamilyMember));
@@ -135,6 +163,31 @@ namespace Lifespan.Tests
             Assert.AreEqual(10, roundTrip.lastBirthdays[0].year);
             Assert.AreEqual(1234, roundTrip.dialogueHistory[0].hashes[0]);
             Assert.AreEqual(44, roundTrip.lastProcessedAgingWeek);
+        }
+
+        [Test]
+        public void AgeData_FromSerializable_NormalizesAgesAndCopiesMutableCollections()
+        {
+            var saved = new AgeDataSerializable();
+            saved.ages.Add(new AgeEntry { id = 2, weeks = -20 });
+            saved.illnesses.Add(new IllnessEntry
+            {
+                id = 2,
+                illnessIds = new List<string> { ElderIllnessManager.ILLNESS_MILD_HEART, "", ElderIllnessManager.ILLNESS_MILD_HEART }
+            });
+            saved.onsetData.Add(new OnsetEntry
+            {
+                id = 2,
+                onsetWeeks = new Dictionary<string, int> { { ElderIllnessManager.ILLNESS_MILD_HEART, -5 } }
+            });
+
+            AgeData data = AgeData.FromSerializable(saved);
+            saved.illnesses[0].illnessIds.Clear();
+            saved.onsetData[0].onsetWeeks.Clear();
+
+            Assert.AreEqual(0, data.familyMemberAges[2]);
+            CollectionAssert.AreEqual(new[] { ElderIllnessManager.ILLNESS_MILD_HEART }, data.elderIllnesses[2]);
+            Assert.AreEqual(0, data.onsetTiming[2][ElderIllnessManager.ILLNESS_MILD_HEART]);
         }
 
         [Test]

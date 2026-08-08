@@ -8,6 +8,7 @@ A detailed aging system mod that brings realistic aging mechanics to Sheltered, 
 ### Core Aging System
 - **Weekly Age Tracking**: Characters age by **1 Year** every **1 in-game Week** (default configuration).
 - **Persistent Data**: Age information is saved per-save slot and persists across sessions.
+- **Missed-Tick Recovery**: Loaded saves catch up every eligible persisted aging interval without reprocessing an already completed week.
 - **Automatic Child-to-Adult Transitions**: Children automatically become adults at the configurable threshold.
 
 ### Aging Pacing (Default)
@@ -43,6 +44,8 @@ When a child reaches adulthood:
 - Stats are recalculated for adult caps
 - Journal entry is created to commemorate the event
 - Movement speed and behaviors update
+
+Newborn care jobs use the game's shared pantry and water resources, and cancelled jobs return carried food when the game permits it.
 
 ### Elder Illness System
 Once characters reach elder age (default: 60 years), they become susceptible to age-related illnesses:

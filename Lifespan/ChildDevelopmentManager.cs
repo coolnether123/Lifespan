@@ -40,6 +40,14 @@ namespace Lifespan
                 return fallback;
             }
 
+            // Save/load hydration is the authority for biological age. Until it is
+            // ready, preserve the vanilla child flag instead of treating every
+            // family member as age zero (which would immobilize adult NPCs).
+            if (_ageTracker == null || !_ageTracker.IsDataHydrated)
+            {
+                return member.isChild ? ChildStage.Child : ChildStage.Adult;
+            }
+
             return GetStageForAgeYears(_ageTracker.GetAgeYears(member));
         }
 
@@ -75,6 +83,8 @@ namespace Lifespan
         public bool CanDoJobs(FamilyMember member)
         {
             if (!_config.enableChildDevelopment) return true;
+            if (member == null) return false;
+            if (_ageTracker == null || !_ageTracker.IsDataHydrated) return !member.isChild;
             int ageYears = _ageTracker.GetAgeYears(member);
             return ageYears >= _config.childJobAgeYears;
         }
@@ -82,6 +92,8 @@ namespace Lifespan
         public bool CanGoOnExpedition(FamilyMember member, bool hasAdultAccompaniment)
         {
             if (!_config.enableChildDevelopment) return true; // Fallback to vanilla logic (which might block children anyway)
+            if (member == null) return false;
+            if (_ageTracker == null || !_ageTracker.IsDataHydrated) return !member.isChild;
 
             int ageYears = _ageTracker.GetAgeYears(member);
             
@@ -108,6 +120,8 @@ namespace Lifespan
         public bool IsSoloExpeditionCapable(FamilyMember member)
         {
             if (!_config.enableChildDevelopment) return true;
+            if (member == null) return false;
+            if (_ageTracker == null || !_ageTracker.IsDataHydrated) return !member.isChild;
             int ageYears = _ageTracker.GetAgeYears(member);
             return ageYears >= _config.expeditionMinAgeSolo;
         }

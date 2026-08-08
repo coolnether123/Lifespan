@@ -111,7 +111,7 @@ namespace Lifespan
                 return false;
             }
 
-            newAge = Math.Max(0, current + weeks);
+            newAge = LifespanMath.NormalizeAgeWeeks((long)current + weeks);
             if (character is FamilyMember familyMember)
             {
                 _ageTracker.SetAgeWeeks(familyMember, newAge);

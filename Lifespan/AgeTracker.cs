@@ -106,8 +106,10 @@ namespace Lifespan
         private int NormalDistribution(int mean, int stdDev)
         {
             // Box-Muller transform using the seeded random stream
-            double u1 = 1.0 - _random.Value(); 
-            double u2 = 1.0 - _random.Value();
+            double random1 = Math.Max(1e-12, Math.Min(1.0 - 1e-12, _random.Value()));
+            double random2 = Math.Max(1e-12, Math.Min(1.0 - 1e-12, _random.Value()));
+            double u1 = 1.0 - random1;
+            double u2 = 1.0 - random2;
             double randStdNormal = Math.Sqrt(-2.0 * Math.Log(u1)) * Math.Sin(2.0 * Math.PI * u2); 
             return (int)(mean + stdDev * randStdNormal);
         }
@@ -178,23 +180,30 @@ namespace Lifespan
 
             // Route generation to specific handlers
             int ageWeeks;
-            switch (context)
+            if (isFamilyMember && context == AgeContext.FamilyMember)
             {
-                case AgeContext.ExplorerEncounter:
-                    ageWeeks = GenerateExplorerAge(character);
-                    break;
-                case AgeContext.ShelterRecruit:
-                    ageWeeks = GenerateShelterRecruitAge(character);
-                    break;
-                case AgeContext.NPC_Trader:
-                    ageWeeks = GenerateTraderAge(character);
-                    break;
-                case AgeContext.NewbornFromPregnancy:
-                    ageWeeks = 0;
-                    break;
-                default:
-                    ageWeeks = GenerateDefaultNPCAge(character);
-                    break;
+                ageWeeks = GenerateInitialAge((FamilyMember)character, ((FamilyMember)character).isChild);
+            }
+            else
+            {
+                switch (context)
+                {
+                    case AgeContext.ExplorerEncounter:
+                        ageWeeks = GenerateExplorerAge(character);
+                        break;
+                    case AgeContext.ShelterRecruit:
+                        ageWeeks = GenerateShelterRecruitAge(character);
+                        break;
+                    case AgeContext.NPC_Trader:
+                        ageWeeks = GenerateTraderAge(character);
+                        break;
+                    case AgeContext.NewbornFromPregnancy:
+                        ageWeeks = 0;
+                        break;
+                    default:
+                        ageWeeks = GenerateDefaultNPCAge(character);
+                        break;
+                }
             }
 
             // Commit to memory
@@ -209,7 +218,7 @@ namespace Lifespan
             }
             
             // Notify other mod systems (API Hook)
-            ModEventBus.Publish("Lifespan.CharacterAgeGenerated", 
+            PublishEvent("Lifespan.CharacterAgeGenerated",
                 new CharacterAgeGeneratedArgs(character, ageWeeks, context));
             
             return ageWeeks;
@@ -322,7 +331,7 @@ namespace Lifespan
             _state.Ages.SetFamilyAgeWeeks(memberId, initialAge);
             if (Log.IsDebugEnabled) _log.Info($"Initialized age for {member.firstName} to {initialAge / LifespanConstants.WeeksPerYear} years (ID: {memberId}).");
             
-            ModEventBus.Publish("Lifespan.AgeInitialized", new AgeChangedArgs(member, initialAge, 0));
+            PublishEvent("Lifespan.AgeInitialized", new AgeChangedArgs(member, initialAge, 0));
 
             return initialAge;
         }
@@ -333,6 +342,20 @@ namespace Lifespan
             if (object.ReferenceEquals(member, null)) return false;
             int memberId = member.GetId();
             return _state.Ages.TryGetFamilyAgeWeeks(memberId, out ageWeeks);
+        }
+
+        private void PublishEvent<T>(string eventName, T args)
+        {
+            try
+            {
+                ModEventBus.Publish(eventName, args);
+            }
+            catch (Exception ex)
+            {
+                // Age state is already committed. A framework/subscriber failure
+                // must not turn a successful generation into a failed API call.
+                _log.Warn($"[AgeTracker] Failed to publish '{eventName}': {ex.Message}");
+            }
         }
 
         /// <summary>
@@ -505,17 +528,17 @@ namespace Lifespan
             
             // Progression Logic: Applies accelerated childhood aging if enabled.
             // Note: Per design requirements, acceleration is inhibited for characters aged 10 and older.
-            int increment = weeks;
+            long increment = weeks;
             int currentAgeYears = currentAge / LifespanConstants.WeeksPerYear;
             
             int accelerationCutoffAge = Math.Max(1, _config.childhoodAccelerationCutoffAge);
-            if (_config.enableAcceleratedChildhood && currentAgeYears < accelerationCutoffAge)
+            if (weeks > 0 && _config.enableAcceleratedChildhood && currentAgeYears < accelerationCutoffAge)
             {
                 increment *= 2;
                 if (Log.IsDebugEnabled) Log.Debug($"[AgeTracker] Accelerated biological aging applied to {member.firstName}: {weeks} -> {increment} weeks.");
             }
 
-            int newAge = currentAge + increment;
+            int newAge = LifespanMath.NormalizeAgeWeeks((long)currentAge + increment);
             
             int memberId = member.GetId();
             _state.Ages.SetFamilyAgeWeeks(memberId, newAge);

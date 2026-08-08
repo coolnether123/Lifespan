@@ -35,7 +35,17 @@ namespace Lifespan
 
         protected override bool UpdatePreparation()
         {
-            return HasArrived(location);
+            if (!HasArrived(location)) return false;
+
+            // Water is a shared resource. Consume it only after the caregiver
+            // reaches the tank so cancelled or unreachable jobs cannot grant free thirst recovery.
+            if (WaterManager.Instance == null || !WaterManager.Instance.UseWater(1f))
+            {
+                Cancel(true);
+                return false;
+            }
+
+            return true;
         }
 
         protected override void ApplyCare()

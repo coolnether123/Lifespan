@@ -224,6 +224,21 @@ namespace Lifespan.Tests
         }
 
         [Test]
+        public void ElderIllnessRoll_ZeroMaxHealthUsesBoundedHealthFactor()
+        {
+            var member = (FamilyMember)CreateDummyMember();
+            TrySetField(member, "health", 0);
+            TrySetField(member, "m_health", 0);
+            TrySetField(member, "maxHealth", 0);
+            TrySetField(member, "m_maxHealth", 0);
+
+            Assert.DoesNotThrow(() => _manager.ProcessElderIllnessRoll(
+                member,
+                60 * LifespanConstants.WeeksPerYear,
+                8));
+        }
+
+        [Test]
         public void IllnessModifiers_PreserveUnrelatedStatModifierWhenAppliedAndRemoved()
         {
             var member = (FamilyMember)CreateDummyMember();

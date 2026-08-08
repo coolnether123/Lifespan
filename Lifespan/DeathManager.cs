@@ -152,7 +152,7 @@ namespace Lifespan
                 // Config is now Percentage (0-100), convert to 0-1
                 float baseProb = (_config.deathBaseProbability / 100f) + (yearsPastElder * (_config.deathProbabilityIncreasePerYear / 100f));
                 
-                float healthFactor = 1.0f - ((float)member.health / member.maxHealth);
+                float healthFactor = 1.0f - LifespanMath.NormalizeHealthFraction(member.health, member.maxHealth);
                 // Non-linear HP impact: health increases chance MORE the lower the HP
                 float healthImpact = 1.0f + (healthFactor * healthFactor * _config.healthImpactFactor);
                 
@@ -161,10 +161,7 @@ namespace Lifespan
 
                 // Convert per-week probability into a multi-week tick probability.
                 int rolledWeeks = Math.Max(1, elapsedBiologicalWeeks);
-                float finalProb = (rolledWeeks <= 1)
-                    ? weeklyProb
-                    : 1f - (float)Math.Pow(1f - weeklyProb, rolledWeeks);
-                finalProb = Mathf.Clamp01(finalProb);
+                float finalProb = LifespanMath.ProbabilityAtLeastOnce(weeklyProb, rolledWeeks);
 
                 float roll = _random.Value();
                 if (Log.IsDebugEnabled) Log.Debug($"Death Roll for {member.firstName}: {roll:F5} VS Prob: {finalProb:F5} (Weekly: {weeklyProb:F5}, Weeks: {rolledWeeks}, Base: {baseProb:F4}, HP Impact: {healthImpact:F2}, Mult: {_config.deathProbabilityMultiplier}).");

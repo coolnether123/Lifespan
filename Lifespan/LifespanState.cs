@@ -140,13 +140,14 @@ namespace Lifespan
 
         public void SetFamilyAgeWeeks(int id, int ageWeeks)
         {
-            _state.Data.familyMemberAges[id] = Math.Max(0, ageWeeks);
+            _state.Data.familyMemberAges[id] = LifespanMath.NormalizeAgeWeeks(ageWeeks);
             _state.Data.externalCharacterAges.Remove(id);
         }
 
         public void SetExternalAgeWeeks(int id, int ageWeeks)
         {
-            _state.Data.externalCharacterAges[id] = Math.Max(0, ageWeeks);
+            _state.Data.externalCharacterAges[id] = LifespanMath.NormalizeAgeWeeks(ageWeeks);
+            _state.Data.familyMemberAges.Remove(id);
         }
 
         public void RemoveExternalCharacter(int id)

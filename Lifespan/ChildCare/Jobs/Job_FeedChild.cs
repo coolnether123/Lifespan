@@ -66,7 +66,16 @@ namespace Lifespan
         {
             if (_child == null || _feeder == null || character == null)
             {
+                ReturnFood();
                 Cancel(true);
+                return;
+            }
+
+            if (GetCancelState() != JobCancelState.Active)
+            {
+                ReturnFood();
+                state = JobState.Finished;
+                OnFinishedJob();
                 return;
             }
 
@@ -112,23 +121,17 @@ namespace Lifespan
             }
             else if (_stage == FeedState.Feed)
             {
-                // Instant feed for now, or animation?
-                // Just apply hunger reduction.
-                if (_child.stats != null)
+                FamilyAI ai = _feeder.GetComponent<FamilyAI>();
+                int foodTaken = ai != null ? ai.CarriedFood_GetFoodTaken() : 0;
+                if (_child.stats == null || _child.stats.hunger == null || ai == null || foodTaken <= 0)
                 {
-                    // Restore hunger. 
-                    // Rations usually give large amounts.
-                    // Assume we took a ration.
-                    _child.stats.hunger.Modify(-100f); 
-                    // Also reduce feeder's carried food?
-                    // The 'GetFood' stage interaction (take_food) usually puts food in the character's inventory (FamilyAI.carriedFoodType).
-                    
-                    FamilyAI ai = _feeder.GetComponent<FamilyAI>();
-                    if (ai != null)
-                    {
-                        ai.CarriedFood_Feed(); // Consumes the food visuals/logic
-                    }
+                    ReturnFood();
+                    Cancel(true);
+                    return;
                 }
+
+                _child.stats.hunger.Modify(-100f);
+                ai.CarriedFood_Feed();
                 
                 state = JobState.Finished;
                 OnFinishedJob();
@@ -147,9 +150,8 @@ namespace Lifespan
 
             if (_stage == FeedState.GetFood)
             {
-                // Find Pantry/Freezer
-                // Simplified logic from Job_Feed
-                // We need to set this.obj to the Food Container
+                // Find a pantry with an actual ration available. A container's
+                // existence is not evidence that the interaction can provide food.
                 if (ObjectManager.Instance == null)
                 {
                     Cancel(true);
@@ -157,19 +159,17 @@ namespace Lifespan
                 }
 
                 List<Obj_Base> sources = ObjectManager.Instance.GetObjectsOfType(ObjectManager.ObjectType.Pantry);
-                if (sources == null || sources.Count == 0) sources = ObjectManager.Instance.GetObjectsOfType(ObjectManager.ObjectType.Freezer);
-                
-                // Filter for "Has Food" logic? 
-                // Obj_Pantry has 'rationCount'.
-                // We'll just pick the first valid one.
                 Obj_Base bestSource = null;
                 if (sources != null)
                 {
-                    foreach(var src in sources)
+                    foreach (var src in sources)
                     {
-                        // Basic check, assume pantry has food if it exists for now.
-                        bestSource = src;
-                        break;
+                        Obj_Pantry pantry = src as Obj_Pantry;
+                        if (pantry != null && pantry.GetRations() > 0)
+                        {
+                            bestSource = pantry;
+                            break;
+                        }
                     }
                 }
 
@@ -198,15 +198,14 @@ namespace Lifespan
 
         public void ReturnFood()
         {
-             // If we have food but cancelled, put it back.
-             // Copied logic from Job_Feed.ReturnTakenItems if needed.
-             // For simplicity, we skip this for the prototype, but in prod should be added.
-             FamilyAI ai = _feeder.GetComponent<FamilyAI>();
-             if (ai != null && ai.CarriedFood_GetFoodTaken() > 0 && FoodManager.Instance != null)
-             {
-                 FoodManager.Instance.AddRations(ai.CarriedFood_GetFoodTaken());
-                 ai.CarriedFood_Feed(); // Clear hands
-             }
+            if (_feeder == null) return;
+
+            FamilyAI ai = _feeder.GetComponent<FamilyAI>();
+            int foodTaken = ai != null ? ai.CarriedFood_GetFoodTaken() : 0;
+            if (foodTaken > 0 && FoodManager.Instance != null && FoodManager.Instance.AddRations(foodTaken))
+            {
+                ai.CarriedFood_Feed();
+            }
         }
 
         public override void SaveLoadJob(SaveData data)

@@ -80,6 +80,19 @@ namespace Lifespan.Tests
         }
 
         [Test]
+        public void ValidateAndClamp_LeavesRoomForElderThresholdAtUpperBound()
+        {
+            _config.adultAgeYears = 100;
+            _config.elderAgeYears = 1;
+
+            _config.ValidateAndClamp();
+
+            Assert.AreEqual(99, _config.adultAgeYears);
+            Assert.AreEqual(100, _config.elderAgeYears);
+            Assert.Less(_config.adultAgeYears, _config.elderAgeYears);
+        }
+
+        [Test]
         public void ValidateAndClamp_EnforcesChildAndExpeditionOrder()
         {
             _config.adultAgeYears = 18;

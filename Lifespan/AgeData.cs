@@ -36,14 +36,14 @@ namespace Lifespan
 
             var data = new AgeData
             {
-                familyMemberAges = CreateIntDictionary(s.ages),
-                externalCharacterAges = CreateIntDictionary(s.externalAges),
+                familyMemberAges = CreateIntDictionary(s.ages, true),
+                externalCharacterAges = CreateIntDictionary(s.externalAges, true),
                 elderIllnesses = new Dictionary<int, List<string>>(CountOrZero(s.illnesses)),
                 greyProfiles = new Dictionary<int, GreyProfile>(CountOrZero(s.greyProfiles)),
                 developmentGenes = new Dictionary<int, DevelopmentGene>(CountOrZero(s.developmentGenes)),
                 onsetTiming = new Dictionary<int, Dictionary<string, int>>(CountOrZero(s.onsetData)),
-                deceasedDeathDays = CreateIntDictionary(s.deathDays),
-                deceasedDeathAges = CreateIntDictionary(s.deathAges),
+                deceasedDeathDays = CreateIntDictionary(s.deathDays, false),
+                deceasedDeathAges = CreateIntDictionary(s.deathAges, true),
                 triggeredMilestones = new Dictionary<int, HashSet<string>>(CountOrZero(s.triggeredMilestones)),
                 lastBirthdayYear = new Dictionary<int, int>(CountOrZero(s.lastBirthdays)),
                 dialogueHistory = new Dictionary<string, HashSet<int>>(CountOrZero(s.dialogueHistory))
@@ -51,7 +51,7 @@ namespace Lifespan
 
             if (s.illnesses != null)
                 foreach (var entry in s.illnesses)
-                    if (entry != null) data.elderIllnesses[entry.id] = entry.illnessIds ?? new List<string>();
+                    if (entry != null) data.elderIllnesses[entry.id] = CopyIllnessIds(entry.illnessIds);
 
             if (s.greyProfiles != null)
                 foreach (var entry in s.greyProfiles)
@@ -63,7 +63,7 @@ namespace Lifespan
 
             if (s.onsetData != null)
                 foreach (var entry in s.onsetData)
-                    if (entry != null) data.onsetTiming[entry.id] = entry.onsetWeeks ?? new Dictionary<string, int>();
+                    if (entry != null) data.onsetTiming[entry.id] = CopyOnsetTiming(entry.onsetWeeks);
 
             if (s.deathDays != null)
                 foreach (var entry in s.deathDays)
@@ -90,14 +90,51 @@ namespace Lifespan
             return data;
         }
 
-        private static Dictionary<int, int> CreateIntDictionary(List<AgeEntry> entries)
+        private static Dictionary<int, int> CreateIntDictionary(List<AgeEntry> entries, bool normalizeNonNegative)
         {
             var result = new Dictionary<int, int>(CountOrZero(entries));
             if (entries == null) return result;
 
             foreach (var entry in entries)
             {
-                if (entry != null) result[entry.id] = entry.weeks;
+                if (entry != null)
+                {
+                    result[entry.id] = normalizeNonNegative
+                        ? LifespanMath.NormalizeAgeWeeks(entry.weeks)
+                        : entry.weeks;
+                }
+            }
+
+            return result;
+        }
+
+        internal static List<string> CopyIllnessIds(List<string> source)
+        {
+            var result = new List<string>(CountOrZero(source));
+            if (source == null) return result;
+
+            foreach (string illnessId in source)
+            {
+                if (!string.IsNullOrEmpty(illnessId) && illnessId.Trim().Length > 0 && !result.Contains(illnessId))
+                {
+                    result.Add(illnessId);
+                }
+            }
+
+            return result;
+        }
+
+        internal static Dictionary<string, int> CopyOnsetTiming(Dictionary<string, int> source)
+        {
+            var result = new Dictionary<string, int>(source != null ? source.Count : 0);
+            if (source == null) return result;
+
+            foreach (var entry in source)
+            {
+                if (!string.IsNullOrEmpty(entry.Key) && entry.Key.Trim().Length > 0)
+                {
+                    result[entry.Key] = LifespanMath.NormalizeAgeWeeks(entry.Value);
+                }
             }
 
             return result;
@@ -153,6 +190,8 @@ namespace Lifespan
                 return;
             }
 
+            if (object.ReferenceEquals(this, source)) return;
+
             CopyList(ref ages, source.ages);
             CopyList(ref externalAges, source.externalAges);
             CopyList(ref illnesses, source.illnesses);
@@ -172,17 +211,28 @@ namespace Lifespan
             Clear();
             if (data == null) return;
 
-            foreach (var kvp in data.familyMemberAges) ages.Add(new AgeEntry { id = kvp.Key, weeks = kvp.Value });
-            foreach (var kvp in data.externalCharacterAges) externalAges.Add(new AgeEntry { id = kvp.Key, weeks = kvp.Value });
-            foreach (var kvp in data.elderIllnesses) illnesses.Add(new IllnessEntry { id = kvp.Key, illnessIds = kvp.Value ?? new List<string>() });
-            foreach (var kvp in data.greyProfiles) greyProfiles.Add(new GreyProfileEntry { id = kvp.Key, profile = kvp.Value });
-            foreach (var kvp in data.developmentGenes) developmentGenes.Add(new DevelopmentGeneEntry { id = kvp.Key, gene = kvp.Value });
-            foreach (var kvp in data.onsetTiming) onsetData.Add(new OnsetEntry { id = kvp.Key, onsetWeeks = kvp.Value ?? new Dictionary<string, int>() });
-            foreach (var kvp in data.deceasedDeathDays) deathDays.Add(new AgeEntry { id = kvp.Key, weeks = kvp.Value });
-            foreach (var kvp in data.deceasedDeathAges) deathAges.Add(new AgeEntry { id = kvp.Key, weeks = kvp.Value });
-            foreach (var kvp in data.triggeredMilestones) triggeredMilestones.Add(new MilestoneEntry { id = kvp.Key, keys = new List<string>(kvp.Value ?? new HashSet<string>()) });
-            foreach (var kvp in data.lastBirthdayYear) lastBirthdays.Add(new BirthdayEntry { id = kvp.Key, year = kvp.Value });
-            foreach (var kvp in data.dialogueHistory) dialogueHistory.Add(new DialogueHistoryEntry { key = kvp.Key, hashes = new List<int>(kvp.Value ?? new HashSet<int>()) });
+            if (data.familyMemberAges != null)
+                foreach (var kvp in data.familyMemberAges) ages.Add(new AgeEntry { id = kvp.Key, weeks = LifespanMath.NormalizeAgeWeeks(kvp.Value) });
+            if (data.externalCharacterAges != null)
+                foreach (var kvp in data.externalCharacterAges) externalAges.Add(new AgeEntry { id = kvp.Key, weeks = LifespanMath.NormalizeAgeWeeks(kvp.Value) });
+            if (data.elderIllnesses != null)
+                foreach (var kvp in data.elderIllnesses) illnesses.Add(new IllnessEntry { id = kvp.Key, illnessIds = AgeData.CopyIllnessIds(kvp.Value) });
+            if (data.greyProfiles != null)
+                foreach (var kvp in data.greyProfiles) greyProfiles.Add(new GreyProfileEntry { id = kvp.Key, profile = kvp.Value });
+            if (data.developmentGenes != null)
+                foreach (var kvp in data.developmentGenes) developmentGenes.Add(new DevelopmentGeneEntry { id = kvp.Key, gene = kvp.Value });
+            if (data.onsetTiming != null)
+                foreach (var kvp in data.onsetTiming) onsetData.Add(new OnsetEntry { id = kvp.Key, onsetWeeks = AgeData.CopyOnsetTiming(kvp.Value) });
+            if (data.deceasedDeathDays != null)
+                foreach (var kvp in data.deceasedDeathDays) deathDays.Add(new AgeEntry { id = kvp.Key, weeks = kvp.Value });
+            if (data.deceasedDeathAges != null)
+                foreach (var kvp in data.deceasedDeathAges) deathAges.Add(new AgeEntry { id = kvp.Key, weeks = LifespanMath.NormalizeAgeWeeks(kvp.Value) });
+            if (data.triggeredMilestones != null)
+                foreach (var kvp in data.triggeredMilestones) triggeredMilestones.Add(new MilestoneEntry { id = kvp.Key, keys = new List<string>(kvp.Value ?? new HashSet<string>()) });
+            if (data.lastBirthdayYear != null)
+                foreach (var kvp in data.lastBirthdayYear) lastBirthdays.Add(new BirthdayEntry { id = kvp.Key, year = kvp.Value });
+            if (data.dialogueHistory != null)
+                foreach (var kvp in data.dialogueHistory) dialogueHistory.Add(new DialogueHistoryEntry { key = kvp.Key, hashes = new List<int>(kvp.Value ?? new HashSet<int>()) });
             lastProcessedAgingWeek = data.lastProcessedAgingWeek;
         }
 

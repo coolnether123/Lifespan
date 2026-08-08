@@ -179,12 +179,15 @@ namespace Lifespan
 
         public static class FamilyMember_OnFatalDamageTaken_Patch
         {
-            public static bool Prefix(FamilyMember __instance, ref bool __result)
+            public static bool Prefix(BaseCharacter __instance, ref bool __result)
             {
-                string extra = __instance.lastDamageExtra;
+                if (!(__instance is FamilyMember member)) return true;
+
+                string extra = member.lastDamageExtra;
                 if (extra == "Old age" || extra == "Natural causes" || extra == "Heart Failure")
                 {
-                    if (LifespanPlugin.Instance.Log.IsDebugEnabled) LifespanPlugin.Instance.Log.Debug($"Bypassing unconscious state for natural death: {extra}");
+                    LifespanPlugin plugin = LifespanPlugin.Instance;
+                    if (plugin != null && plugin.Log.IsDebugEnabled) plugin.Log.Debug($"Bypassing unconscious state for natural death: {extra}");
                     __result = true; // Return true to trigger immediate death (OnDeath)
                     return false;    // Skip original method
                 }
@@ -244,6 +247,7 @@ namespace Lifespan
 
             foreach (var id in illnesses)
             {
+                if (string.IsNullOrEmpty(id) || id.Trim().Length == 0) continue;
                 if (id == ElderIllnessManager.ILLNESS_DEMENTIA)
                 {
                     float intMultiplier = (cfg != null) ? Mathf.Clamp01(cfg.dementiaIntModifier) : 0.5f;

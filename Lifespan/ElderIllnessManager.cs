@@ -10,7 +10,6 @@ namespace Lifespan
     {
         private readonly LifespanConfig _config;
         private readonly IModLogger _log;
-        private readonly AgeTracker _ageTracker;
         private readonly IIllnessState _illnessState;
         private readonly ModRandomStream _random;
 
@@ -39,7 +38,6 @@ namespace Lifespan
         {
             _config = config;
             _log = ctx.Log;
-            _ageTracker = ageTracker;
             _illnessState = illnessState;
             _random = random;
             _dialogueHelper = dialogueHelper;
@@ -70,12 +68,15 @@ namespace Lifespan
             }
         }
 
-        public void ProcessElderIllnessRoll(FamilyMember member, int currentAgeWeeks)
+        public void ProcessElderIllnessRoll(FamilyMember member, int currentAgeWeeks, int elapsedBiologicalWeeks = 1)
         {
             if (member == null || member.isDead) return;
-            CheckProgression(member);
+            int elderWeeks = _config.elderAgeYears * LifespanConstants.WeeksPerYear;
+            if (currentAgeWeeks < elderWeeks) return;
 
-            float healthFactor = member.maxHealth > 0 ? Mathf.Clamp01((float)member.health / member.maxHealth) : 0f;
+            CheckProgression(member, currentAgeWeeks);
+
+            float healthFactor = LifespanMath.NormalizeHealthFraction(member.health, member.maxHealth);
             float stressFactor = member.stats?.trauma != null ? Mathf.Clamp01(member.stats.trauma.Value / 100f) : 0f;
             float fatigueFactor = member.stats?.fatigue != null ? Mathf.Clamp01(member.stats.fatigue.Value / 100f) : 0f;
 
@@ -84,20 +85,20 @@ namespace Lifespan
                                   (1.0f + (2.0f * (1.0f - healthFactor))) *
                                   (1.0f + (1.5f * stressFactor)) *
                                   (1.0f + (0.5f * fatigueFactor));
-            acquiredChance = Mathf.Clamp01(acquiredChance);
+            float tickChance = LifespanMath.ProbabilityAtLeastOnce(acquiredChance, elapsedBiologicalWeeks);
 
-            if (_random.Value() < acquiredChance) AcquireRandomIllness(member);
-            ApplyOngoingEffects(member);
+            if (_random.Value() < tickChance) AcquireRandomIllness(member, currentAgeWeeks);
+            ApplyOngoingEffects(member, elapsedBiologicalWeeks);
         }
 
-        private void CheckProgression(FamilyMember member)
+        private void CheckProgression(FamilyMember member, int currentWeek)
         {
-            int currentWeek = _ageTracker.GetAgeWeeks(member);
             var illnesses = GetIllnesses(member);
             var toUpgrade = new List<string>();
 
             foreach (var ill in illnesses)
             {
+                if (string.IsNullOrEmpty(ill) || ill.Trim().Length == 0) continue;
                 if (!ill.Contains(".mild.")) continue;
                 int targetWeek = _illnessState.GetOnsetWeek(member.GetId(), ill);
                 if (targetWeek <= 0)
@@ -141,7 +142,7 @@ namespace Lifespan
             return _dialogueHelper.PickLine($"Flavor_{illnessId}", IllnessDialogue.GetFlavorOptions(illnessId), member);
         }
 
-        private void AcquireRandomIllness(FamilyMember member)
+        private void AcquireRandomIllness(FamilyMember member, int currentWeek)
         {
             List<string> possible = new List<string>();
             var current = GetIllnesses(member);
@@ -155,7 +156,7 @@ namespace Lifespan
             {
                 string picked = possible[_random.Range(0, possible.Count)];
                 _illnessState.AddIllness(member.GetId(), picked);
-                _illnessState.SetOnsetWeek(member.GetId(), picked, CalculateNextStageWeek(member, _ageTracker.GetAgeWeeks(member)));
+                _illnessState.SetOnsetWeek(member.GetId(), picked, CalculateNextStageWeek(member, currentWeek));
                 ApplyInitialEffect(member, picked);
                 
                 string flavor = GetFlavorDialogue(member, picked);
@@ -227,15 +228,23 @@ namespace Lifespan
             }
         }
 
-        private void ApplyOngoingEffects(FamilyMember member)
+        private void ApplyOngoingEffects(FamilyMember member, int elapsedBiologicalWeeks)
         {
             foreach (var id in GetIllnesses(member))
             {
-                if (id == ILLNESS_HEART && _random.Value() < _config.heartDiseaseAttackChance / 100f) TriggerHeartAttack(member);
-                else if (id == ILLNESS_MILD_HEART && _random.Value() < 0.05f) TriggerJournal(IllnessDialogue.GetMinorHeartPalpitationMessage(member.firstName));
+                if (string.IsNullOrEmpty(id) || id.Trim().Length == 0) continue;
 
-                // 2% chance per cycle to trigger a 3-turn conversation about the illness
-                if (_random.Value() < 0.02f)
+                if (id == ILLNESS_HEART && _random.Value() < LifespanMath.ProbabilityAtLeastOnce(_config.heartDiseaseAttackChance / 100f, elapsedBiologicalWeeks))
+                {
+                    TriggerHeartAttack(member);
+                }
+                else if (id == ILLNESS_MILD_HEART && _random.Value() < LifespanMath.ProbabilityAtLeastOnce(0.05f, elapsedBiologicalWeeks))
+                {
+                    TriggerJournal(IllnessDialogue.GetMinorHeartPalpitationMessage(member.firstName));
+                }
+
+                // 2% chance per biological week to trigger a 3-turn conversation about the illness.
+                if (_random.Value() < LifespanMath.ProbabilityAtLeastOnce(0.02f, elapsedBiologicalWeeks))
                 {
                     TriggerIllnessConversation(member, id);
                 }

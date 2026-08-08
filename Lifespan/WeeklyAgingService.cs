@@ -40,7 +40,7 @@ namespace Lifespan
                         return api != null && api.ShouldCancelAging(character);
                     },
                     TransitionToAdult = member => childManager.TransitionToAdult(member),
-                    ProcessElderIllnessRoll = (member, ageWeeks) => illnessManager.ProcessElderIllnessRoll(member, ageWeeks),
+                    ProcessElderIllnessRoll = (member, ageWeeks, elapsedWeeks) => illnessManager.ProcessElderIllnessRoll(member, ageWeeks, elapsedWeeks),
                     ProcessHairGreying = processHairGreying,
                     ProcessDevelopment = (member, ageWeeks, weeksAged) => devGeneManager.ProcessDevelopment(member, ageWeeks, weeksAged),
                     ProcessMilestones = (member, ageWeeks) => milestoneManager.ProcessMilestones(member, ageWeeks),
@@ -107,12 +107,6 @@ namespace Lifespan
 
             _config.ValidateAndClamp();
 
-            if (currentWeek % _config.agingIntervalWeeks != 0)
-            {
-                if (_log.IsDebugEnabled) _log.Debug($"Skipping aging this week (Interval: {_config.agingIntervalWeeks}).");
-                return;
-            }
-
             int lastProcessedWeek = _ageTracker.LastProcessedAgingWeek;
             if (!WeeklyAgingPolicy.ShouldProcessAgingWeek(currentWeek, lastProcessedWeek, out string weekSkipReason))
             {
@@ -129,11 +123,54 @@ namespace Lifespan
                 return;
             }
 
-            _ageTracker.MarkAgingWeekProcessed(currentWeek);
+            int firstCatchUpWeek = lastProcessedWeek <= WeeklyAgingPolicy.NoProcessedWeek
+                ? currentWeek
+                : lastProcessedWeek + 1;
+            bool processedAnyWeek = false;
+            int processedWeekCount = 0;
+
+            for (int agingWeek = firstCatchUpWeek; agingWeek <= currentWeek; agingWeek++)
+            {
+                if (agingWeek % _config.agingIntervalWeeks != 0) continue;
+                if (!WeeklyAgingPolicy.ShouldProcessAgingWeek(agingWeek, _ageTracker.LastProcessedAgingWeek, out string tickSkipReason))
+                {
+                    if (_log.IsDebugEnabled) _log.Debug($"Skipping catch-up aging week {agingWeek}: {tickSkipReason}.");
+                    continue;
+                }
+
+                ProcessAgingTick(agingWeek, currentDay, members);
+                processedAnyWeek = true;
+                processedWeekCount++;
+            }
+
+            if (!processedAnyWeek)
+            {
+                if (_log.IsDebugEnabled) _log.Debug($"Skipping aging through week {currentWeek} (Interval: {_config.agingIntervalWeeks}).");
+                return;
+            }
+
+            if (_log.IsDebugEnabled) _log.Debug("[WeeklyAging] Cycle complete. Cleaning up missing members from tracker.");
+            _operations.CleanupMissingMembers();
+
+            if (_operations.HasExternalCharacterAging())
+            {
+                if (_log.IsDebugEnabled) _log.Debug($"[WeeklyAging] Processing aging for external characters ({processedWeekCount} tick(s)).");
+                for (int i = 0; i < processedWeekCount; i++)
+                {
+                    _operations.UpdateExternalCharacters(_config.weeksAgedPerInterval);
+                }
+            }
+
+            _operations.ForceAvatarUpdate();
+        }
+
+        private void ProcessAgingTick(int agingWeek, int currentDay, List<FamilyMember> members)
+        {
+            _ageTracker.MarkAgingWeekProcessed(agingWeek);
 
             if (_log.IsDebugEnabled)
             {
-                _log.Debug($"[WeeklyAging] Starting pass. Day={currentDay}, Week={currentWeek}, MemberCount={members.Count}, WeeksToAdd={_config.weeksAgedPerInterval}.");
+                _log.Debug($"[WeeklyAging] Starting pass. Day={currentDay}, Week={agingWeek}, MemberCount={members.Count}, WeeksToAdd={_config.weeksAgedPerInterval}.");
             }
 
             foreach (FamilyMember member in members)
@@ -171,7 +208,7 @@ namespace Lifespan
                 if (newAgeWeeks >= elderWeeks)
                 {
                     if (_log.IsDebugEnabled) _log.Debug($"{member.firstName} is an elder. Processing illness roll...");
-                    _operations.ProcessElderIllnessRoll(member, newAgeWeeks);
+                    _operations.ProcessElderIllnessRoll(member, newAgeWeeks, elapsedBiologicalWeeks);
                 }
 
                 if (_log.IsDebugEnabled) _log.Debug($"Processing hair greying, development, and milestones for '{member.firstName}'.");
@@ -205,16 +242,6 @@ namespace Lifespan
                 if (_log.IsDebugEnabled) _log.Debug($"[WeeklyAging] Finished processing member: {member.firstName}.");
             }
 
-            if (_log.IsDebugEnabled) _log.Debug("[WeeklyAging] Cycle complete. Cleaning up missing members from tracker.");
-            _operations.CleanupMissingMembers();
-
-            if (_operations.HasExternalCharacterAging())
-            {
-                if (_log.IsDebugEnabled) _log.Debug("[WeeklyAging] Processing aging for external characters (NPCs).");
-                _operations.UpdateExternalCharacters(_config.weeksAgedPerInterval);
-            }
-
-            _operations.ForceAvatarUpdate();
         }
 
         private void LogWeeklyAgingSkip(FamilyMember member, string reason)
@@ -250,7 +277,7 @@ namespace Lifespan
         public Func<FamilyMember, bool> IsNullMember = member => member == null;
         public Func<BaseCharacter, bool> ShouldCancelAging = character => false;
         public Action<FamilyMember> TransitionToAdult = member => { };
-        public Action<FamilyMember, int> ProcessElderIllnessRoll = (member, ageWeeks) => { };
+        public Action<FamilyMember, int, int> ProcessElderIllnessRoll = (member, ageWeeks, elapsedWeeks) => { };
         public Action<FamilyMember, int> ProcessHairGreying = (member, ageWeeks) => { };
         public Action<FamilyMember, int, int> ProcessDevelopment = (member, ageWeeks, weeksAged) => { };
         public Action<FamilyMember, int> ProcessMilestones = (member, ageWeeks) => { };
