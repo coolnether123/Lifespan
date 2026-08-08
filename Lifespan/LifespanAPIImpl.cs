@@ -42,6 +42,7 @@ namespace Lifespan
         // Generic / NPC API Implementation
         public int GenerateAgeForNPC(BaseCharacter character, AgeContext context) => _ageTracker.GenerateAgeForContext(character, context);
         public int GetCharacterAgeWeeks(BaseCharacter character) => _ageTracker.GetAgeWeeks(character);
+        internal bool TryGetCharacterAgeWeeks(BaseCharacter character, out int ageWeeks) => _ageTracker.TryGetAgeWeeks(character, out ageWeeks);
         public List<BaseCharacter> GetTrackedExternalCharacters() => _ageTracker.GetTrackedExternalCharacters();
         
         public int IncrementCharacterAge(BaseCharacter character, int weeks)
@@ -119,7 +120,21 @@ namespace Lifespan
                 _ageTracker.SetExternalCharacterAge(character, newAge);
             }
 
-            OnCharacterAged?.Invoke(character, newAge);
+            var handlers = OnCharacterAged;
+            if (handlers != null)
+            {
+                foreach (System.Action<BaseCharacter, int> handler in handlers.GetInvocationList())
+                {
+                    try
+                    {
+                        handler(character, newAge);
+                    }
+                    catch (Exception ex)
+                    {
+                        _log.Warn($"OnCharacterAged handler failed for character {GetCharacterIdForLog(character)}; continuing other handlers. Error: {ex.Message}");
+                    }
+                }
+            }
             return true;
         }
 

@@ -336,6 +336,27 @@ namespace Lifespan
         }
 
         /// <summary>
+        /// Looks up a saved age without treating a valid newborn age of zero as missing.
+        /// Re-registers a live external character when its saved record is found.
+        /// </summary>
+        public bool TryGetAgeWeeks(BaseCharacter character, out int ageWeeks)
+        {
+            ageWeeks = 0;
+            if (object.ReferenceEquals(character, null)) return false;
+
+            if (character is FamilyMember member)
+            {
+                return TryGetAgeWeeks(member, out ageWeeks);
+            }
+
+            int characterId = character.GetId();
+            if (!_state.Ages.TryGetExternalAgeWeeks(characterId, out ageWeeks)) return false;
+
+            TrackExternalCharacter(character);
+            return true;
+        }
+
+        /// <summary>
         /// Generic accessor for any character type.
         /// </summary>
         public int GetAgeWeeks(BaseCharacter character)
@@ -347,15 +368,8 @@ namespace Lifespan
                 return GetAgeWeeks(fm);
             }
 
-            int id = character.GetId();
             int ageWeeks;
-            if (_state.Ages.TryGetExternalAgeWeeks(id, out ageWeeks))
-            {
-                TrackExternalCharacter(character);
-                return ageWeeks;
-            }
-
-            return 0;
+            return TryGetAgeWeeks(character, out ageWeeks) ? ageWeeks : 0;
         }
 
         /// <summary>

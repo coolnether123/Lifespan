@@ -15,10 +15,17 @@ namespace Lifespan
 
         protected override bool BeginPreparation()
         {
-            List<Obj_Base> sources = ObjectManager.Instance.GetObjectsOfType(ObjectManager.ObjectType.WaterTank);
-            if (sources.Count == 0)
+            if (ObjectManager.Instance == null)
             {
-                return true;
+                Cancel(true);
+                return false;
+            }
+
+            List<Obj_Base> sources = ObjectManager.Instance.GetObjectsOfType(ObjectManager.ObjectType.WaterTank);
+            if (sources == null || sources.Count == 0)
+            {
+                Cancel(true);
+                return false;
             }
 
             location = sources[0].GetInteractionPosition();

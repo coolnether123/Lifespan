@@ -77,44 +77,56 @@ namespace Lifespan
 
         public static class FamilyManager_AdoptNpc_Patch
         {
-            // Capture the age of the NPC before it is potentially destroyed/converted
-            public static void Prefix(NpcVisitor npc, out int __state)
+            public sealed class AdoptionState
             {
-                __state = 0;
-                if (npc != null && LifespanPlugin.Instance != null)
+                public bool HasAge;
+                public int AgeWeeks;
+                public GameObject GameObject;
+            }
+
+            // Capture the age of the NPC before it is potentially destroyed/converted
+            public static void Prefix(NpcVisitor npc, out AdoptionState __state)
+            {
+                __state = new AdoptionState();
+                if (npc == null || LifespanPlugin.Instance == null) return;
+
+                __state.GameObject = npc.gameObject;
+                LifespanAPIImpl api = LifespanPlugin.Instance.Api as LifespanAPIImpl;
+                if (api != null)
                 {
-                    // Get the age associated with this NPC visitor
-                    __state = LifespanPlugin.Instance.Api.GetCharacterAgeWeeks(npc);
+                    __state.HasAge = api.TryGetCharacterAgeWeeks(npc, out __state.AgeWeeks);
                 }
             }
 
-            public static void Postfix(bool __result, NpcVisitor npc, int __state)
+            public static void Postfix(bool __result, NpcVisitor npc, AdoptionState __state)
             {
-                // If adoption failed or we have no age state to transfer, abort
-                if (!__result || __state <= 0 || npc == null || LifespanPlugin.Instance == null) return;
+                // If adoption failed or the NPC had no saved age, abort.
+                if (!__result || __state == null || !__state.HasAge || LifespanPlugin.Instance == null) return;
 
                 try
                 {
                     // The NpcVisitor component is destroyed in AdoptNpc, but the GameObject persists
                     // and now has a FamilyMember component.
-                    FamilyMember newMember = npc.gameObject.GetComponent<FamilyMember>();
+                    GameObject gameObject = __state.GameObject;
+                    if (gameObject == null && npc != null) gameObject = npc.gameObject;
+                    if (gameObject == null)
+                    {
+                        LifespanPlugin.Instance.Log.Warn("AdoptNpc succeeded but the NPC GameObject was unavailable for age transfer.");
+                        return;
+                    }
 
-                                    if (newMember != null)
-                                    {
-                                        if (__state > 0)
-                                        {
-                                            LifespanPlugin.Instance.Api.SetCharacterAgeWeeks(newMember, __state);
-                                            LifespanPlugin.Instance.Log.Info($"Transferred age {__state / LifespanConstants.WeeksPerYear}y from NPC to new FamilyMember {newMember.firstName}.");
-                                        }
-                                        else
-                                        {
-                                            LifespanPlugin.Instance.Log.Warn($"Age transfer failed - NPC age state was invalid ({__state}). Initializing fresh.");
-                                        }
-                                    }
-                                    else
-                                    {
-                                        LifespanPlugin.Instance.Log.Warn("AdoptNpc succeeded but could not find FamilyMember component on GameObject.");
-                                    }                }
+                    FamilyMember newMember = gameObject.GetComponent<FamilyMember>();
+
+                    if (newMember != null)
+                    {
+                        LifespanPlugin.Instance.Api.SetCharacterAgeWeeks(newMember, __state.AgeWeeks);
+                        LifespanPlugin.Instance.Log.Info($"Transferred age {__state.AgeWeeks / LifespanConstants.WeeksPerYear}y from NPC to new FamilyMember {newMember.firstName}.");
+                    }
+                    else
+                    {
+                        LifespanPlugin.Instance.Log.Warn("AdoptNpc succeeded but could not find FamilyMember component on GameObject.");
+                    }
+                }
                 catch (Exception ex)
                 {
                     LifespanPlugin.Instance.Log.Error($"Error in AdoptNpc patch: {ex.Message}");

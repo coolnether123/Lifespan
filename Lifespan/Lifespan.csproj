@@ -32,11 +32,7 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
 
-  <ItemGroup>
-    <EmbeddedResource Include="Assets\Crib\baby_crib_rolling.png">
-      <LogicalName>Lifespan.Assets.Crib.baby_crib_rolling.png</LogicalName>
-    </EmbeddedResource>
-  </ItemGroup>
+  <!-- Stable 2.0 defers the crib visual until placement, save/load, and multi-baby behavior are proven. -->
 
   <ItemGroup>
     <Reference Include="0Harmony">

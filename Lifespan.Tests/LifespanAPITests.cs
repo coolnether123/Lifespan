@@ -67,6 +67,32 @@ namespace Lifespan.Tests
         }
 
         [Test]
+        public void UpdateExternalCharacters_ContinuesAfterSubscriberFailure()
+        {
+            var visitor = CreateNpc(505);
+            _api.SetCharacterAgeWeeks(visitor, 100);
+
+            bool secondHandlerRan = false;
+            _api.OnCharacterAged += (character, ageWeeks) => throw new System.InvalidOperationException("test subscriber failure");
+            _api.OnCharacterAged += (character, ageWeeks) => secondHandlerRan = true;
+
+            Assert.DoesNotThrow(() => _api.UpdateExternalCharacters(4));
+            Assert.IsTrue(secondHandlerRan);
+            Assert.AreEqual(104, _api.GetCharacterAgeWeeks(visitor));
+        }
+
+        [Test]
+        public void TryGetCharacterAgeWeeks_PreservesSavedNewbornAge()
+        {
+            var visitor = CreateNpc(506);
+            _api.SetCharacterAgeWeeks(visitor, 0);
+
+            int ageWeeks;
+            Assert.IsTrue(_api.TryGetCharacterAgeWeeks(visitor, out ageWeeks));
+            Assert.AreEqual(0, ageWeeks);
+        }
+
+        [Test]
         public void GetTrackedExternalCharacters_ReturnsLiveRegisteredExternalCharacters()
         {
             var visitor = CreateNpc(503);

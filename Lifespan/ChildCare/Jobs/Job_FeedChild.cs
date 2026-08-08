@@ -64,6 +64,12 @@ namespace Lifespan
 
         public override void UpdateJob()
         {
+            if (_child == null || _feeder == null || character == null)
+            {
+                Cancel(true);
+                return;
+            }
+
             if (_stage == FeedState.GetFood)
             {
                  // We are walking to food or taking it.
@@ -97,9 +103,11 @@ namespace Lifespan
                 else
                 {
                     // Update destination in case child moved
-                    // Only update occasionally to avoid pathfinding spam? 
-                    // For now, simple WalkTo.
-                    // If checking every frame, assume WalkToPosition handles redundancy.
+                    if (dist > LifespanConstants.UpdateTargetDistance)
+                    {
+                        location = _child.transform.position;
+                        _feeder.WalkToPosition(location);
+                    }
                 }
             }
             else if (_stage == FeedState.Feed)
@@ -142,18 +150,27 @@ namespace Lifespan
                 // Find Pantry/Freezer
                 // Simplified logic from Job_Feed
                 // We need to set this.obj to the Food Container
+                if (ObjectManager.Instance == null)
+                {
+                    Cancel(true);
+                    return;
+                }
+
                 List<Obj_Base> sources = ObjectManager.Instance.GetObjectsOfType(ObjectManager.ObjectType.Pantry);
-                if (sources.Count == 0) sources = ObjectManager.Instance.GetObjectsOfType(ObjectManager.ObjectType.Freezer);
+                if (sources == null || sources.Count == 0) sources = ObjectManager.Instance.GetObjectsOfType(ObjectManager.ObjectType.Freezer);
                 
                 // Filter for "Has Food" logic? 
                 // Obj_Pantry has 'rationCount'.
                 // We'll just pick the first valid one.
                 Obj_Base bestSource = null;
-                foreach(var src in sources)
+                if (sources != null)
                 {
-                    // Basic check, assume pantry has food if it exists for now.
-                    bestSource = src;
-                    break;
+                    foreach(var src in sources)
+                    {
+                        // Basic check, assume pantry has food if it exists for now.
+                        bestSource = src;
+                        break;
+                    }
                 }
 
                 if (bestSource != null)

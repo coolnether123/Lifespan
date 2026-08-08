@@ -75,14 +75,16 @@ namespace Lifespan
             if (member == null || member.isDead) return;
             CheckProgression(member);
 
-            float healthFactor = (float)member.health / member.maxHealth;
-            float stressFactor = (member.stats?.trauma != null) ? member.stats.trauma.Value / 100f : 0f;
-            float fatigueFactor = (member.stats?.fatigue != null) ? member.stats.fatigue.Value / 100f : 0f;
+            float healthFactor = member.maxHealth > 0 ? Mathf.Clamp01((float)member.health / member.maxHealth) : 0f;
+            float stressFactor = member.stats?.trauma != null ? Mathf.Clamp01(member.stats.trauma.Value / 100f) : 0f;
+            float fatigueFactor = member.stats?.fatigue != null ? Mathf.Clamp01(member.stats.fatigue.Value / 100f) : 0f;
 
-            float acquiredChance = _config.elderIllnessBaseChance * 
-                                  (1.0f + (2.0f * (1.0f - healthFactor))) * 
-                                  (1.0f + (1.5f * stressFactor)) * 
+            // Configuration values are displayed as percentages (0.1 = 0.1%/week).
+            float acquiredChance = (_config.elderIllnessBaseChance / 100f) *
+                                  (1.0f + (2.0f * (1.0f - healthFactor))) *
+                                  (1.0f + (1.5f * stressFactor)) *
                                   (1.0f + (0.5f * fatigueFactor));
+            acquiredChance = Mathf.Clamp01(acquiredChance);
 
             if (_random.Value() < acquiredChance) AcquireRandomIllness(member);
             ApplyOngoingEffects(member);
@@ -112,6 +114,7 @@ namespace Lifespan
                 _illnessState.RemoveIllness(member.GetId(), mild);
                 _illnessState.AddIllness(member.GetId(), severe);
                 ApplyInitialEffect(member, severe);
+                AgingPatches.ApplyIllnessStatModifiers(member);
 
                 string victimLine = GetFlavorDialogue(member, severe);
                 TriggerSpeech(member, victimLine, DialogueScheduler.Priority.Reactive, () => GetIllnesses(member).Contains(severe));
@@ -314,15 +317,17 @@ namespace Lifespan
 
         public void AddIllnessExternal(FamilyMember member, string id)
         {
-            if (member == null) return;
+            if (member == null || string.IsNullOrEmpty(id) || id.Trim().Length == 0) return;
             _illnessState.AddIllness(member.GetId(), id);
             ApplyInitialEffect(member, id);
+            AgingPatches.ApplyIllnessStatModifiers(member);
         }
 
         public void RemoveIllnessExternal(FamilyMember member, string id)
         {
-            if (member == null) return;
+            if (member == null || string.IsNullOrEmpty(id) || id.Trim().Length == 0) return;
             _illnessState.RemoveIllness(member.GetId(), id);
+            AgingPatches.ApplyIllnessStatModifiers(member);
         }
 
         private List<string> GetIllnesses(FamilyMember member)

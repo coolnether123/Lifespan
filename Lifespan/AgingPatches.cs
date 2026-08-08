@@ -138,7 +138,7 @@ namespace Lifespan
             }
         }
 
-        private static void ApplyIllnessStatModifiers(FamilyMember member)
+        internal static void ApplyIllnessStatModifiers(FamilyMember member)
         {
             if (IllnessState == null || IllnessManager == null || member?.BaseStats == null) return;
 
@@ -146,7 +146,7 @@ namespace Lifespan
             if (illnesses == null || illnesses.Count == 0) return;
             var cfg = LifespanPlugin.Instance?.Config;
  
-            if (LifespanPlugin.Instance.Log.IsDebugEnabled) LifespanPlugin.Instance.Log.Debug($"ApplyIllnessStatModifiers for {member.firstName} (Illnesses: {illnesses.Count})");
+            if (LifespanPlugin.Instance != null && LifespanPlugin.Instance.Log.IsDebugEnabled) LifespanPlugin.Instance.Log.Debug($"ApplyIllnessStatModifiers for {member.firstName} (Illnesses: {illnesses.Count})");
             
             int intMod = 0;
             int strMod = 0;
@@ -180,7 +180,7 @@ namespace Lifespan
             if (member.BaseStats.Intelligence != null) member.BaseStats.Intelligence.SetLevelModifier(intMod);
             if (member.BaseStats.Strength != null) member.BaseStats.Strength.SetLevelModifier(strMod);
             if (member.BaseStats.Dexterity != null) member.BaseStats.Dexterity.SetLevelModifier(dexMod);
-            if (LifespanPlugin.Instance.Log.IsDebugEnabled) LifespanPlugin.Instance.Log.Debug($"Final modifiers applied for {member.firstName} - Int: {intMod}, Str: {strMod}, Dex: {dexMod}");
+            if (LifespanPlugin.Instance != null && LifespanPlugin.Instance.Log.IsDebugEnabled) LifespanPlugin.Instance.Log.Debug($"Final modifiers applied for {member.firstName} - Int: {intMod}, Str: {strMod}, Dex: {dexMod}");
         }
     }
 }

@@ -29,7 +29,6 @@ namespace Lifespan
         private DialogueScheduler _dialogueScheduler;
         private DialogueHelper _dialogueHelper;
         private ChildDevelopmentManager _childDevManager;
-        private BabyCribVisualManager _babyCribVisualManager;
         private NurseJobGiver _nurseJobGiver;
         private ExpeditionDialogueManager _expeditionDialogueManager;
         private WeeklyAgingService _weeklyAgingService;
@@ -70,7 +69,6 @@ namespace Lifespan
             _milestoneManager?.Reset();
             _deathManager?.Reset();
             _expeditionDialogueManager?.Reset();
-            _babyCribVisualManager?.Clear();
         }
 
         /// <summary>
@@ -101,7 +99,6 @@ namespace Lifespan
                 _devGeneManager = new DevelopmentGeneManager(ctx, Config, _lifespanState.Genetics, this.Random);
                 
                 _childDevManager = new ChildDevelopmentManager(ctx, Config, _ageTracker);
-                _babyCribVisualManager = new BabyCribVisualManager(ctx, Config, _ageTracker);
                 _nurseJobGiver = new NurseJobGiver(ctx, _childDevManager, _ageTracker, _dialogueScheduler);
                 _expeditionDialogueManager = new ExpeditionDialogueManager(ctx, Config, _ageTracker, _illnessManager, _dialogueScheduler, _dialogueHelper, this.Random);
                 
@@ -303,7 +300,6 @@ namespace Lifespan
             if (Config.enableChildDevelopment)
                 _nurseJobGiver?.Update();
 
-            _babyCribVisualManager?.Update();
             _expeditionDialogueManager?.Update();
 
             UpdateHairTransitions();
@@ -563,7 +559,6 @@ namespace Lifespan
         public void Shutdown()
         {
             if (Log.IsDebugEnabled) Log.Debug("Shutdown() starting.");
-            _babyCribVisualManager?.Clear();
             _harmony?.UnpatchAll("com.lifespan.patches");
             ShelteredEvents.AfterLoad -= OnGameLoad;
             ShelteredEvents.BeforeSave -= OnGameSave;

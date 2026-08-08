@@ -204,6 +204,26 @@ namespace Lifespan.Tests
         }
 
         [Test]
+        public void ElderIllnessRoll_UsesPercentageScale()
+        {
+            var member = (FamilyMember)CreateDummyMember();
+            TrySetField(member, "health", 0);
+            TrySetField(member, "m_health", 0);
+            _config.elderIllnessBaseChance = 5.0f;
+            _config.enableArthritis = false;
+            _config.enableHeartDisease = false;
+            _config.enableFrailty = false;
+            _config.enableRespiratory = false;
+
+            // Seed 6791 produces a first roll of approximately 0.5846. With
+            // the configured percentage scale, a fully unhealthy elder has a
+            // 15% acquisition chance (5% base x 3 health multiplier), not 15.0.
+            _manager.ProcessElderIllnessRoll(member, 60 * LifespanConstants.WeeksPerYear);
+
+            Assert.IsEmpty(_manager.GetActiveIllnesses(member));
+        }
+
+        [Test]
         [Category("Simulation")]
         public void VerifyTriggerFrequency()
         {
