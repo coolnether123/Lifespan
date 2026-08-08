@@ -79,6 +79,21 @@ namespace Lifespan.Tests
         }
 
         [Test]
+        public void GenerateAgeForNPC_ReRegistersLiveCharacterForSavedAge()
+        {
+            var previousVisitor = CreateNpc(504);
+            _tracker.SetExternalCharacterAge(previousVisitor, 100);
+            Assert.AreEqual(100, _tracker.GetAgeWeeks(previousVisitor));
+            var visitor = CreateNpc(504);
+
+            Assert.AreEqual(100, _api.GenerateAgeForNPC(visitor, AgeContext.NPC_Wanderer));
+
+            var tracked = _api.GetTrackedExternalCharacters();
+            Assert.AreEqual(1, tracked.Count);
+            Assert.AreSame(visitor, tracked[0]);
+        }
+
+        [Test]
         public void SetConfiguration_UpdatesSharedConfigInstance()
         {
             var updated = new LifespanConfig
@@ -99,6 +114,7 @@ namespace Lifespan.Tests
         private static NpcVisitor CreateNpc(int id)
         {
             var visitor = (NpcVisitor)FormatterServices.GetUninitializedObject(typeof(NpcVisitor));
+            SetField(visitor, typeof(UnityEngine.Object), "m_CachedPtr", new System.IntPtr(1));
             SetField(visitor, typeof(NpcVisitor), "m_npcId", id);
             return visitor;
         }

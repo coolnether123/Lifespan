@@ -81,6 +81,33 @@ namespace Lifespan.Tests
         }
 
         [Test]
+        public void IncrementAge_UsesConfiguredChildhoodCutoffAge()
+        {
+            var member = (FamilyMember)System.Runtime.Serialization.FormatterServices.GetUninitializedObject(typeof(FamilyMember));
+            typeof(FamilyMember).GetField("familyId", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance).SetValue(member, 125);
+            _config.childhoodAccelerationCutoffAge = 8;
+
+            _tracker.SetAgeWeeks(member, 7 * 52);
+            Assert.AreEqual((7 * 52) + (2 * 52), _tracker.IncrementAge(member, 52));
+
+            _tracker.SetAgeWeeks(member, 8 * 52);
+            Assert.AreEqual((8 * 52) + 52, _tracker.IncrementAge(member, 52));
+        }
+
+        [Test]
+        public void IsElder_UsesConfiguredThresholdBoundary()
+        {
+            var member = (FamilyMember)System.Runtime.Serialization.FormatterServices.GetUninitializedObject(typeof(FamilyMember));
+            typeof(FamilyMember).GetField("familyId", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance).SetValue(member, 126);
+
+            _tracker.SetAgeWeeks(member, (_config.elderAgeYears * 52) - 1);
+            Assert.IsFalse(_tracker.IsElder(member));
+
+            _tracker.SetAgeWeeks(member, _config.elderAgeYears * 52);
+            Assert.IsTrue(_tracker.IsElder(member));
+        }
+
+        [Test]
         public void AgeData_RoundTrip_PreservesExistingSaveSchemaFields()
         {
             var saved = new AgeDataSerializable();

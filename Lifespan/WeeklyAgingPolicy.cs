@@ -14,9 +14,11 @@ namespace Lifespan
                 return false;
             }
 
-            if (currentWeek == lastProcessedWeek)
+            if (currentWeek <= lastProcessedWeek)
             {
-                reason = "week-already-processed";
+                reason = currentWeek == lastProcessedWeek
+                    ? "week-already-processed"
+                    : "week-before-processed";
                 return false;
             }
 

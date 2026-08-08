@@ -79,6 +79,15 @@ namespace Lifespan.Tests
         }
 
         [Test]
+        public void ShouldProcessAgingWeek_TimeRollback_DoesNotReprocessOlderWeek()
+        {
+            bool shouldProcess = WeeklyAgingPolicy.ShouldProcessAgingWeek(11, 12, out string reason);
+
+            Assert.IsFalse(shouldProcess);
+            Assert.AreEqual("week-before-processed", reason);
+        }
+
+        [Test]
         public void ShouldSkipWeeklyAging_DeadOrDyingMembers_ReturnsTrue()
         {
             var dead = CreateMember(4, isDead: true);

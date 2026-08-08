@@ -170,6 +170,9 @@ namespace Lifespan
 
             if (!isFamilyMember && _state.Ages.TryGetExternalAgeWeeks(id, out existingAgeWeeks))
             {
+                // A saved age record is not enough for bulk aging: the live object
+                // must be re-registered after a load or an NPC re-encounter.
+                TrackExternalCharacter(character);
                 return existingAgeWeeks;
             }
 
@@ -477,7 +480,8 @@ namespace Lifespan
             int increment = weeks;
             int currentAgeYears = currentAge / LifespanConstants.WeeksPerYear;
             
-            if (_config.enableAcceleratedChildhood && currentAgeYears < LifespanConstants.ChildhoodAccelerationStopAge)
+            int accelerationCutoffAge = Math.Max(1, _config.childhoodAccelerationCutoffAge);
+            if (_config.enableAcceleratedChildhood && currentAgeYears < accelerationCutoffAge)
             {
                 increment *= 2;
                 if (Log.IsDebugEnabled) Log.Debug($"[AgeTracker] Accelerated biological aging applied to {member.firstName}: {weeks} -> {increment} weeks.");
