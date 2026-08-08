@@ -190,6 +190,7 @@ namespace Lifespan
         {
             if (member == null || member.isDead) return;
             foreach (var id in GetIllnesses(member)) ApplyInitialEffect(member, id, true);
+            AgingPatches.ApplyIllnessStatModifiers(member);
         }
 
         private void ApplyInitialEffect(FamilyMember member, string illnessId, bool silent = false)

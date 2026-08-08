@@ -450,7 +450,7 @@ namespace Lifespan
             foreach (var kvp in _externalCharacterRefs)
             {
                 BaseCharacter character = kvp.Value;
-                if (object.ReferenceEquals(character, null))
+                if (character == null)
                 {
                     staleIds.Add(kvp.Key);
                     continue;
