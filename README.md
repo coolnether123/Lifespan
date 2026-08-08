@@ -45,7 +45,7 @@ When a child reaches adulthood:
 - Movement speed and behaviors update
 
 ### Elder Illness System
-Once characters reach elder age (default: 65 years), they become susceptible to age-related illnesses:
+Once characters reach elder age (default: 60 years), they become susceptible to age-related illnesses:
 
 #### Available Illnesses (all configurable):
 1. **Dementia** - Reduces Intelligence stat
@@ -55,16 +55,16 @@ Once characters reach elder age (default: 65 years), they become susceptible to 
 5. **Respiratory Issues** - Affects stamina
 
 #### Illness Mechanics:
-- Base 3% weekly chance (configurable)
+- Base 0.1% weekly chance (configurable)
 - Modified by current health (lower health = higher chance)
 - Illnesses stack (characters can have multiple)
 - Each illness applies permanent effects
 - All illnesses persist across saves
 
 ### Death from Old Age
-At the death risk threshold (default: 75 years):
-- Base 1% weekly death chance (configurable)
-- Increases by 0.5% per year over threshold
+At the death risk threshold (default: 60 years):
+- Base 0.05% weekly death chance (configurable)
+- Increases by 0.008% per year over threshold
 - Modified by:
   - Current health (lower health = higher risk)
   - Number of active illnesses
