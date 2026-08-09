@@ -183,18 +183,20 @@ namespace Lifespan
         public List<string> GetIllnesses(int id)
         {
             List<string> illnesses;
+            return _state.Data.elderIllnesses.TryGetValue(id, out illnesses)
+                ? illnesses
+                : new List<string>();
+        }
+
+        public void AddIllness(int id, string illnessId)
+        {
+            List<string> illnesses;
             if (!_state.Data.elderIllnesses.TryGetValue(id, out illnesses))
             {
                 illnesses = new List<string>();
                 _state.Data.elderIllnesses[id] = illnesses;
             }
 
-            return illnesses;
-        }
-
-        public void AddIllness(int id, string illnessId)
-        {
-            var illnesses = GetIllnesses(id);
             if (!illnesses.Contains(illnessId))
             {
                 illnesses.Add(illnessId);

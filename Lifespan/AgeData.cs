@@ -71,7 +71,7 @@ namespace Lifespan
 
             if (s.deathAges != null)
                 foreach (var entry in s.deathAges)
-                    if (entry != null) data.deceasedDeathAges[entry.id] = entry.weeks;
+                    if (entry != null) data.deceasedDeathAges[entry.id] = LifespanMath.NormalizeAgeWeeks(entry.weeks);
 
             if (s.triggeredMilestones != null)
                 foreach (var entry in s.triggeredMilestones)

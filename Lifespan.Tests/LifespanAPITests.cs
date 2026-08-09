@@ -155,6 +155,16 @@ namespace Lifespan.Tests
             Assert.AreEqual(21, _config.elderAgeYears);
         }
 
+        [Test]
+        public void ReadingMissingIllnesses_DoesNotCreatePersistedRecord()
+        {
+            Assert.IsEmpty(_tracker.State.Data.elderIllnesses);
+
+            Assert.IsEmpty(_tracker.State.Illnesses.GetIllnesses(999));
+
+            Assert.IsEmpty(_tracker.State.Data.elderIllnesses);
+        }
+
         private static NpcVisitor CreateNpc(int id)
         {
             var visitor = (NpcVisitor)FormatterServices.GetUninitializedObject(typeof(NpcVisitor));

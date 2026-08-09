@@ -191,6 +191,17 @@ namespace Lifespan.Tests
         }
 
         [Test]
+        public void AgeData_FromSerializable_NormalizesPersistedDeathAge()
+        {
+            var saved = new AgeDataSerializable();
+            saved.deathAges.Add(new AgeEntry { id = 9, weeks = -40 });
+
+            AgeData data = AgeData.FromSerializable(saved);
+
+            Assert.AreEqual(0, data.deceasedDeathAges[9]);
+        }
+
+        [Test]
         public void AgeDataSerializable_CopyFrom_KeepsRegisteredListInstances()
         {
             var container = new AgeDataSerializable();
