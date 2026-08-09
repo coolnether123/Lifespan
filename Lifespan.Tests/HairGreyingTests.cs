@@ -12,6 +12,17 @@ namespace Lifespan.Tests
     public class HairGreyingTests
     {
         [Test]
+        public void DefaultConstructorCreatesNeutralGeneForSaveHydration()
+        {
+            var gene = new GreyingGene();
+
+            Assert.AreEqual(99, gene.StartAge);
+            Assert.AreEqual(10, gene.DurationYears);
+            Assert.AreEqual(0f, gene.MaxCoverage);
+            Assert.AreEqual(0f, gene.GetGreyFactor(100f));
+        }
+
+        [Test]
         public void GetGreyFactor_BeforeStartAge_ReturnsZero()
         {
             // Arrange

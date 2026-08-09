@@ -33,6 +33,7 @@ namespace Lifespan
         private ExpeditionDialogueManager _expeditionDialogueManager;
         private WeeklyAgingService _weeklyAgingService;
         private LifespanState _lifespanState;
+        private AgeDataStore _ageDataStore;
         private bool _pendingHydration;
         private bool _pendingFreshGameHydration;
 
@@ -90,7 +91,8 @@ namespace Lifespan
                 _dialogueHelper = new DialogueHelper(this.Random, _lifespanState.Dialogue);
                 
                 // 2. Initialize primary data tracker (AgeTracker)
-                _ageTracker = new AgeTracker(ctx, Config, this.Random, new AgeDataStore(ctx), _lifespanState);
+                _ageDataStore = new AgeDataStore(ctx);
+                _ageTracker = new AgeTracker(ctx, Config, this.Random, _ageDataStore, _lifespanState);
                 
                 // 3. Initialize domain-specific managers
                 _childManager = new ChildTransitionManager(ctx, Config, _lifespanState.Genetics, this.Random);
@@ -104,6 +106,11 @@ namespace Lifespan
                 _expeditionDialogueManager = new ExpeditionDialogueManager(ctx, Config, _ageTracker, _illnessManager, _dialogueScheduler, _dialogueHelper, this.Random);
                 
                 _debugManager = new DebugManager(Log, Config);
+
+                _ageDataStore.ConfigurePersistenceLifecycle(
+                    delegate { OnGameSave(null); },
+                    delegate { OnGameLoad(null); },
+                    delegate { return _ageTracker != null && _ageTracker.IsDataHydrated; });
 
                 ResetAllState();
                 if (Log.IsDebugEnabled) Log.Debug("Initialize() complete.");
@@ -178,8 +185,6 @@ namespace Lifespan
         
             // 5. Subscribe to Sheltered game events
             if (Log.IsDebugEnabled) Log.Debug("Subscribing to ShelteredEvents...");
-            ShelteredEvents.AfterLoad += OnGameLoad;
-            ShelteredEvents.BeforeSave += OnGameSave;
             ShelteredEvents.SessionStarted += OnSessionStarted;
             ShelteredEvents.NewGame += OnNewGame;
             
@@ -561,8 +566,6 @@ namespace Lifespan
         {
             if (Log.IsDebugEnabled) Log.Debug("Shutdown() starting.");
             _harmony?.UnpatchAll("com.lifespan.patches");
-            ShelteredEvents.AfterLoad -= OnGameLoad;
-            ShelteredEvents.BeforeSave -= OnGameSave;
             ShelteredEvents.SessionStarted -= OnSessionStarted;
             ShelteredEvents.NewGame -= OnNewGame;
             AgingPatches.OnNewWeekCallback = null;

@@ -21,6 +21,17 @@ namespace Lifespan
         // Caches for optimization
         private float _slope;
 
+        /// <summary>
+        /// Creates the neutral gene used while the save system hydrates public fields.
+        /// The ModAPI persistence graph constructs reference-type fields before copying
+        /// their serialized values, so persisted genes must expose a public default
+        /// constructor.
+        /// </summary>
+        public GreyingGene()
+            : this(99, 10, 0f)
+        {
+        }
+
         public GreyingGene(int startAge, int duration, float maxCoverage)
         {
             StartAge = startAge;

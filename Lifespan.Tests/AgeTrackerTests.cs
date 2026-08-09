@@ -166,6 +166,36 @@ namespace Lifespan.Tests
         }
 
         [Test]
+        public void AgeData_RoundTrip_PreservesGreyingProfileBehavior()
+        {
+            var saved = new AgeDataSerializable();
+            saved.greyProfiles.Add(new GreyProfileEntry
+            {
+                id = 7,
+                profile = new GreyProfile
+                {
+                    OriginalColor = new[] { 0.2f, 0.4f, 0.6f },
+                    Gene = new GreyingGene(42, 12, 0.8f),
+                    StartAgeWeeks = 42 * 52,
+                    DurationWeeks = 12 * 52
+                }
+            });
+
+            AgeData data = AgeData.FromSerializable(saved);
+            AgeDataSerializable roundTrip = data.ToSerializable();
+            GreyProfile restored = roundTrip.greyProfiles[0].profile;
+
+            Assert.AreEqual(7, roundTrip.greyProfiles[0].id);
+            Assert.AreEqual(42, restored.Gene.StartAge);
+            Assert.AreEqual(12, restored.Gene.DurationYears);
+            Assert.AreEqual(0.8f, restored.Gene.MaxCoverage, 0.001f);
+            Assert.AreEqual(0.4f, restored.Gene.GetGreyFactor(48f), 0.001f);
+            CollectionAssert.AreEqual(new[] { 0.2f, 0.4f, 0.6f }, restored.OriginalColor);
+            Assert.AreEqual(42 * 52, restored.StartAgeWeeks);
+            Assert.AreEqual(12 * 52, restored.DurationWeeks);
+        }
+
+        [Test]
         public void AgeData_FromSerializable_NormalizesAgesAndCopiesMutableCollections()
         {
             var saved = new AgeDataSerializable();
