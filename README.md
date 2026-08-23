@@ -1,223 +1,121 @@
-# Lifespan Mod for Sheltered
-**Created by coolnether123**
+# Lifespan
 
-A detailed aging system mod that brings realistic aging mechanics to Sheltered, progressing characters from childhood through adulthood and into old age. Now featuring full NPC support and an expanded API for inter-mod compatibility.
+Lifespan adds biological ages, child development, elder illness, and natural death to Sheltered. It stores age and health-history data in each save and exposes the data through `com.lifespan.api`.
 
-## Features
+Version 1.1.4 by coolnether123. Requires Sheltered Mod Manager 2.0, ModAPI 2.0, and ShelteredAPI 2.0.
 
-### Core Aging System
-- **Weekly Age Tracking**: Characters age by **1 Year** every **1 in-game Week** (default configuration).
-- **Persistent Data**: Age information is saved per-save slot and persists across sessions.
-- **Missed-Tick Recovery**: Loaded saves catch up every eligible persisted aging interval without reprocessing an already completed week.
-- **Automatic Child-to-Adult Transitions**: Children automatically become adults at the configurable threshold.
+## Aging
 
-### Aging Pacing (Default)
-The default configuration is tuned for "Fast Aging" to make generational gameplay viable in a standard playthrough:
-- **1 Game Week = 1 Year of Age.**
-- **Expected Lifespans:**
-  - **Newborns:** ~550 Days to old age.
-  - **Recruits (Age 30):** ~300 Days to old age.
-  - **Elders (Age 60):** ~100-150 Days until death risk becomes high.
-- *Note:* Players can adjust `weeksAgedPerInterval` in the config file to slow this down (e.g., set to `1` for realistic time) or speed it up.
+By default, the aging service runs once per in-game week and adds 52 biological weeks. Children below age 10 receive twice that increment when childhood fast aging is enabled.
 
-### Expanded Age Service (New!)
-- **NPC Age Generation**: Context-aware age generation for non-family characters.
-  - **Explorers**: Typically young adults (18-45).
-  - **Recruits**: Wide range of ages seeking shelter.
-  - **Traders**: Often older, more experienced individuals.
-  - **Wanderers**: Generic fallback distribution.
-- **Seamless Recruitment**: When an NPC is recruited into the family, their age data is automatically transferred to their new family member profile.
-- **Inter-Mod Support**: Built-in support for pregnancy mods to register newborns (starting at age 0) and manage their growth.
+The default life-stage thresholds are:
 
-### Natural Development System
-Characters now grow and learn naturally over time based on Lifespan's saved growth-potential profile:
-- **Child Growth**: Children have a high potential for learning (4x faster than adults) and can gain significant stats before adulthood.
-- **Adult Development**: Adults grow slower but steady.
-- **Spark Mechanic**: Happy characters (low stress) have a chance to experience a "Spark" — a breakthrough that grants double stat points instantly.
-- **Skill Fatigue**: Characters are encouraged to be well-rounded. Gaining a specific stat reduces the chance of gaining that same stat again immediately.
-- **Use It or Lose It**: Characters have a growth-potential cap. If they don't develop their skills before reaching the next life stage (e.g. becoming an Elder), that potential is lost forever.
+- adulthood at 18 years
+- elder status at 60 years
+- child mobility at 1 year
+- regular work at 6 years
+- escorted expeditions at 10 years
+- solo expeditions at 13 years
 
-### Child-to-Adult Transition
-When a child reaches adulthood:
-- Character mesh automatically swaps from boy/girl to man/woman
-- Physical appearance is preserved (colors, features)
-- Stats are recalculated for adult caps
-- Journal entry is created to commemorate the event
-- Movement speed and behaviors update
+You can change the interval, biological increment, life-stage ages, and childhood acceleration in the ShelteredAPI settings panel. Lifespan catches up missed eligible intervals after a save loads without processing the same interval twice.
 
-Newborn care jobs use the game's shared pantry and water resources, and cancelled jobs return carried food when the game permits it.
+## Character development
 
-### Elder Illness System
-Once characters reach elder age (default: 60 years), they become susceptible to age-related illnesses:
+Children and adults can gain stats from a saved development-potential profile. Growth chance depends on life stage, trauma, unused potential, and the configured milestone windows. A breakthrough multiplies one stat gain. Repeating the same stat receives a lower selection weight.
 
-#### Available Illnesses (all configurable):
-1. **Dementia** - Reduces Intelligence stat
-2. **Arthritis** - Reduces movement speed
-3. **Heart Disease** - Weekly chance of heart attacks (can be fatal)
-4. **Frailty** - Reduces Strength stat
-5. **Respiratory Issues** - Affects stamina
+When a child reaches adulthood, Lifespan changes the child mesh to an adult mesh and updates the capabilities that depend on age.
 
-#### Illness Mechanics:
-- Base 0.1% weekly chance (configurable)
-- Modified by current health (lower health = higher chance)
-- Illnesses stack (characters can have multiple)
-- Each illness applies permanent effects
-- All illnesses persist across saves
+Young children have dedicated care jobs for food, water, toileting, cleaning, and sleep. The jobs use the game's pantry and water resources. A cancelled feeding job returns carried food when the game allows it.
 
-### Death from Old Age
-At the death risk threshold (default: 60 years):
-- Base 0.05% weekly death chance (configurable)
-- Increases by 0.008% per year over threshold
-- Modified by:
-  - Current health (lower health = higher risk)
-  - Number of active illnesses
-  - Trauma/stress levels
-- Death cause is recorded (old age or specific illness)
-- Journal entry created upon death
+## Elder illness and natural death
 
-## Configuration
+At the configured elder age, weekly checks can add dementia, arthritis, heart disease, frailty, or respiratory illness. Illnesses can progress from mild to severe states and persist with the save.
 
-All settings are exposed through the shared ShelteredAPI 2.0 settings UI with:
-- **Simple View**: Core gameplay controls only.
-- **Advanced View**: Full tuning options and debug controls.
+Natural-death checks use age, health, trauma, active illnesses, and the configured difficulty values. Both elder illness and natural death can be disabled in settings.
 
-### Simple View (Recommended Start)
-- Life stages: Adulthood and Elder age
-- Child development: broad enable/disable and fast-childhood toggle
-- Aging pace: interval and biological weeks per tick
-- Core risk: natural death difficulty, natural death toggle, elder illness chance
-- Journal and visuals toggles
+## NPC ages
 
-### Advanced View
-- Starting age generation ranges and averages
-- Detailed child progression gates (movement/work/expedition ages)
-- Detailed growth tuning and milestone catch-up logic
-- Illness progression timings, per-illness toggles, and severe-effect multipliers
-- NPC age distribution controls
-- Debug options
+Lifespan generates ages for explorers, recruits, traders, and other external characters. The adoption patch transfers a tracked NPC age to the resulting family member when the game uses `FamilyManager.AdoptNpc`.
 
-### Settings Glossary
-- **Breakthrough Chance** (formerly "Spark"): chance for a bigger-than-normal stat gain event.
-- **Late-Growth Bonus** (formerly "Catch-Up Bonus"): extra growth chance when a character is behind potential near a milestone.
-- **Potential Loss Chance** (formerly "Forfeit Chance"): chance to permanently lose unused growth potential near milestone deadlines.
-- **Natural Death Difficulty** (formerly "Death Risk Multiplier"): scales age-based death probability higher or lower.
+A mod that creates or adopts characters through another path must register or transfer the age through the API.
 
----
+## Configure the mod
 
-## API for Other Mods
+ShelteredAPI exposes common controls in the simple settings view and the full set in the advanced view.
 
-The Lifespan mod exposes a public API for other mods to interact with the aging system.
+The simple view includes aging pace, childhood development, natural-death controls, elder illness chance, journal entries, and hair greying. The advanced view includes generated-age ranges, growth tuning, child capability ages, illness progression, severe illness effects, NPC distributions, and debug controls.
 
-### Example Usage:
+## Use the API
+
+The mod registers `ILifespanAPI` as `com.lifespan.api`.
+
 ```csharp
+using Lifespan;
 using ModAPI.Core;
 
-// Get the Lifespan API
-if (ModAPIRegistry.TryGetAPI<ILifespanAPI>("com.lifespan.api", out var lifespanAPI))
+ILifespanAPI lifespan;
+if (ModAPIRegistry.TryGetAPI<ILifespanAPI>("com.lifespan.api", out lifespan))
 {
-    // Get a character's age
-    int ageYears = lifespanAPI.GetCharacterAgeYears(member);
-    
-    // Check if they're an elder
-    bool isElder = lifespanAPI.IsElder(member);
-    
-    // Get their illnesses
-    var illnesses = lifespanAPI.GetActiveIllnesses(member);
-    
-    // Add a custom illness
-    lifespanAPI.AddIllness(member, "lifespan.illness.dementia");
+    int ageYears = lifespan.GetCharacterAgeYears(member);
+    bool isElder = lifespan.IsElder(member);
 }
 ```
 
-### External Character Aging
+Ages are integer biological weeks, and 52 weeks equal one biological year. Age setters clamp negative values to zero. The getter also returns zero for an untracked character, so the public API does not distinguish an unknown age from a newborn.
 
-External characters are tracked with both saved age records and live runtime references. Use `GenerateAgeForNPC` or `SetCharacterAgeWeeks(BaseCharacter, int)` when an NPC is created so later bulk aging can access the concrete character object.
+Family records load at session start. Call age-dependent APIs after the load event. An early family lookup returns zero and does not create a record.
+
+### Track an external character
+
+Call `GenerateAgeForNPC` or `SetCharacterAgeWeeks(BaseCharacter, int)` while the character object is loaded. Lifespan keeps the saved age when the object unloads, but bulk aging and `OnCharacterAged` resume only after another live object is registered for that stable character ID.
 
 ```csharp
-lifespanAPI.GenerateAgeForNPC(visitor, AgeContext.NPC_Trader);
+lifespan.GenerateAgeForNPC(visitor, AgeContext.NPC_Trader);
 
-lifespanAPI.OnBeforeCharacterAged += character =>
+lifespan.OnBeforeCharacterAged += character =>
 {
-    // Return false to skip this character for this aging pass.
     return !IsInCryostasis(character);
 };
 
-lifespanAPI.OnCharacterAged += (character, newAgeWeeks) =>
+lifespan.OnCharacterAged += (character, newAgeWeeks) =>
 {
-    // character is always the concrete character aged by this API event.
+    RecordExternalAge(character, newAgeWeeks);
 };
 
-lifespanAPI.UpdateExternalCharacters(1);
+lifespan.UpdateExternalCharacters(1);
 ```
 
-Saved external age records without a currently loaded `BaseCharacter` are preserved, but they are not bulk-aged or emitted through `OnCharacterAged` until a live character is registered again.
+Every `OnBeforeCharacterAged` subscriber must return `true` for the increment to proceed. An exception from a subscriber cancels that character's increment. `OnCharacterAged` runs after storage, and subscriber exceptions do not roll the age back.
 
-### Compatibility contract
-
-The public API is registered as `com.lifespan.api` and is compiled against ModAPI/ShelteredAPI 2.0.0.0. Family and integration mods should depend on the `ILifespanAPI` interface rather than Lifespan implementation classes.
-
-- Ages are integer biological weeks; one biological year is 52 weeks. Negative values passed to an age setter are stored as 0. Age 0 is a valid newborn age, while an untracked character also reads as 0 through the non-`Try` getter.
-- Family age records are hydrated at session load. Call age-dependent APIs after the load/session event; a family lookup made before hydration returns 0 and does not create a record. Fresh family members are initialized once after hydration, based on their child/adult status and current configuration.
-- `GenerateAgeForNPC` is idempotent for a stable character ID. For external NPCs, the live character object must be registered with `GenerateAgeForNPC` or `SetCharacterAgeWeeks(BaseCharacter)` for weekly bulk aging and `OnCharacterAged` delivery. The ID must remain stable while the NPC exists; names are not identity keys.
-- The vanilla `FamilyManager.AdoptNpc(NpcVisitor)` path transfers the NPC's saved age to the resulting `FamilyMember` and removes the external record. Mods that replace or bypass that adoption path must transfer the age explicitly to the new family member.
-- `OnBeforeCharacterAged` runs once per character; every subscribed handler must return `true` for aging to proceed. A handler exception cancels that character's increment. `OnCharacterAged` fires only after the new age is stored, and subscriber exceptions do not undo the stored age.
-- The family weekly pipeline publishes `Lifespan.CharacterAgedUp`; the `OnCharacterAged` API event covers explicit/API external-character increments. These are separate hooks.
-- `GetActiveIllnesses` returns a snapshot. Use `AddIllness` and `RemoveIllness` for changes. Stable built-in IDs are the `lifespan.illness.*` constants; custom IDs are persisted but have no built-in gameplay effect.
-- `GetConfiguration` should be treated as read-only. Use `SetConfiguration` to apply a complete configuration; it clamps cross-field invariants and persists through the settings provider when available.
-
-## Ownership Boundaries
-
-- Lifespan owns aging, life-stage transitions, elder illness, natural death, and growth-potential timing.
-- Gene Manager owns trait and gene systems. Lifespan may read vanilla traits for aging effects, but it should not become the owner of trait assignment or gene management.
-- Family Expansion owns conception, pregnancy, birth, and postpartum handoff. Lifespan only consumes newborn/age integration calls.
-- Shared settings UI rendering is owned by ShelteredAPI 2.0. Lifespan only provides settings definitions.
+`GetActiveIllnesses` returns a snapshot. Use `AddIllness` and `RemoveIllness` to change saved illness state. Treat the object from `GetConfiguration` as read-only and pass a complete configuration to `SetConfiguration` when you need to update it.
 
 ## Events
 
-The mod publishes the following events for inter-mod communication:
+Lifespan publishes these ModAPI events:
 
-- `Lifespan.CharacterAgedUp` - Weekly age update
-- `Lifespan.CharacterAgeGenerated` - Age generated for a family member or external character
-- `Lifespan.AgeInitialized` - Family age initialized for the first time
+- `Lifespan.CharacterAgedUp` after the weekly family aging pipeline stores a new age
+- `Lifespan.CharacterAgeGenerated` after Lifespan generates an age
+- `Lifespan.AgeInitialized` after a family member receives an initial age
 
-### Example Event Subscription:
-```csharp
-using ModAPI.Events;
+The `OnCharacterAged` API event covers explicit and external-character increments. It is separate from `Lifespan.CharacterAgedUp`.
 
-ModEventBus.Subscribe<CharacterAgedUpArgs>("Lifespan.CharacterAgedUp", args =>
-{
-    MMLog.Info($"Character {args.FamilyMemberId} aged to {args.NewAgeWeeks / 52} years");
-});
-```
+## Install the mod
 
-## Installation
+1. Install Sheltered Mod Manager with ModAPI 2.0 and ShelteredAPI 2.0.
+2. Copy the `Lifespan` mod folder into the game's `mods` directory.
+3. Enable **Lifespan** in Sheltered Mod Manager.
+4. Review the aging interval and biological increment before starting a long save.
 
-1. Ensure Sheltered Mod Manager is installed with ModAPI/ShelteredAPI 2.0.
-2. Copy the `Lifespan` folder to `Sheltered/mods/`
-3. Enable the mod in the Mod Manager
-4. **Recommended**: Configure your preferred aging speed in the Settings menu before starting a long playthrough.
+## Save warning
 
-## Compatibility
+Keep Lifespan enabled for any save that uses its age data. Saving with the mod disabled removes access to ages, illness history, development potential, and recorded natural deaths. Re-enabling the mod can then initialize survivors from their current child or adult state instead of restoring the missing history.
 
-- **Save Compatibility**: Age data is stored per-save. **CRITICAL WARNING**: Disabling the mod mid-playthrough will PERMANENTLY WIPE generational records (death history, illnesses). Any characters who have aged up will reset to young-adult or child baselines if the mod is re-enabled. Ensure this mod remains active for the duration of your save session.
-- **New Saves**: Characters will be initialized with appropriate ages based on their child/adult status (approx. 10y for kids, 30y for adults).
-- **Existing Saves**: When first loaded, characters will be assigned default ages based on their current status.
+## Known limits
 
-## Known Limitations
-
-- Age is tracked in weeks, not individual days
-- Stat modifications from illnesses are not fully reversible (no cure system yet)
-- Child meshes are limited to game's existing boy/girl models
-
-## Future Plans
-
-- Cure/treatment system for elder illnesses
-- Custom events for milestone birthdays
-
-## Credits
-
-Created for the Sheltered Mod Loader with ModAPI/ShelteredAPI 2.0.
+- Lifespan stores age in weeks, not individual days.
+- Severe illness stat changes do not have a cure system.
+- Child and adult transitions use the game's existing character meshes.
 
 ## License
 
-This mod is provided as-is for use with Sheltered.
+Lifespan is available under the [MIT License](LICENSE).

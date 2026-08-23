@@ -5,8 +5,7 @@ using ModAPI.Reflection;
 namespace Lifespan
 {
     /// <summary>
-    /// A legacy helper for reflection that now uses ModAPI.Reflection.Safe for robustness.
-    /// Restored per user request for "debug" functionality.
+    /// Preserves the legacy reflection API while delegating calls to ModAPI.Reflection.Safe.
     /// </summary>
     public static class ReflectionHelper
     {

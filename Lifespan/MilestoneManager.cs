@@ -6,8 +6,7 @@ using Lifespan.Dialogue.Content;
 namespace Lifespan
 {
     /// <summary>
-    /// Handles major life milestones, birthdays, and philosophical dialogue for survivors.
-    /// Integrated with the Journal and character speech systems.
+    /// Schedules saved milestone, birthday, and elder dialogue.
     /// </summary>
     public class MilestoneManager
     {
@@ -81,9 +80,7 @@ namespace Lifespan
             if (!_triggeredMilestones.ContainsKey(memberId))
                 _triggeredMilestones[memberId] = new HashSet<string>();
 
-            // 1. Major Life Observations (Journal Entries)
-            // Fuzzy triggers ensure milestones don't necessarily fire on the exact birthday,
-            // providing a more organic feel to the survivors' journal entries.
+            // Offset each milestone within its age window, but keep the offset stable per survivor.
             TryTriggerFuzzyUnique(member, 18, 2, "Milestone_Adult", (m, age) => TriggerBirthdayJournal(m, age));
             TryTriggerFuzzyUnique(member, 25, 2, "Milestone_Prime", (m, age) => TriggerBirthdayJournal(m, age));
             TryTriggerFuzzyUnique(member, 30, 2, "Milestone_30s", (m, age) => TriggerBirthdayJournal(m, age));
@@ -93,8 +90,6 @@ namespace Lifespan
             TryTriggerFuzzyUnique(member, 70, 5, "Milestone_70s", (m, age) => TriggerBirthdayJournal(m, age));
             TryTriggerFuzzyUnique(member, 80, 5, "Milestone_80s", (m, age) => TriggerBirthdayJournal(m, age));
 
-            // 2. Birthday Check (Routine Speech)
-            // Routine birthdays trigger a random speech from the survivor.
             // Persisted lastBirthdayYear prevents repeat triggers if the game is reloaded.
             if (!_lastBirthdayYear.ContainsKey(memberId)) _lastBirthdayYear[memberId] = ageYears - 1;
             if (ageYears > _lastBirthdayYear[memberId])
@@ -103,19 +98,16 @@ namespace Lifespan
                 if (_random.Value() < 0.3f) TriggerRoutineBirthdaySpeech(member, ageYears);
             }
 
-            // 3. Growth Observations (Childhood)
             if (member.isChild && ageYears > 0 && ageYears % 5 == 0)
                 TryTriggerUnique(member, "GrowthObs_" + ageYears, (m) => TriggerAgeObservation(m, ageYears));
 
-            // 4. Elder Philosophy
-            // Elders have a small random chance to initiate philosophical dialogue
-            // reflecting on their long life in the bunker.
+            // Elders occasionally comment on life in the bunker.
             if (ageYears >= _config.elderAgeYears && _random.Value() < 0.06f)
                 TriggerElderPhilosophy(member);
         }
 
         /// <summary>
-        /// Triggers a unique event for a character, ensuring it only happens once per lifetime.
+        /// Runs an event once for each survivor and milestone key.
         /// </summary>
         private void TryTriggerUnique(FamilyMember member, string key, Action<FamilyMember> action)
         {
@@ -129,9 +121,7 @@ namespace Lifespan
         }
 
         /// <summary>
-        /// Attempts to trigger a milestone within a range of ages. 
-        /// Uses a hash of the member's name to determine a fixed day within the 'fuzziness' range
-        /// so the event doesn't trigger every frame but remains consistent for that character.
+        /// Uses the survivor's name to choose a stable offset within the milestone's age window.
         /// </summary>
         private void TryTriggerFuzzyUnique(FamilyMember member, int targetAge, int range, string keyBase, Action<FamilyMember, int> action)
         {

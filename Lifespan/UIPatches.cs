@@ -169,7 +169,6 @@ namespace Lifespan
             }
             catch (Exception ex)
             {
-                // Note: Don't check for DebugEnabled for Errors, usually
                 LifespanPlugin.Instance.Log.Error("UIPatch Error: " + ex.ToString());
             }
         }

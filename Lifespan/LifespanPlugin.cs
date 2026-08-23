@@ -55,8 +55,7 @@ namespace Lifespan
         private Dictionary<int, CharacterMesh> _meshCache = new Dictionary<int, CharacterMesh>();
 
         /// <summary>
-        /// Resets all internal buffers and manager states.
-        /// Called during initialization and upon game reloading to ensure a clean slate.
+        /// Clears session-only buffers before initialization or a game reload.
         /// </summary>
         public void ResetAllState()
         {
@@ -74,14 +73,13 @@ namespace Lifespan
         }
 
         /// <summary>
-        /// ModAPI v1.2 Entry Point. Initializes all singleton managers and 
-        /// registers the data structures for the save system.
+        /// Initializes managers and registers the save data.
         /// </summary>
         public override void Initialize(IPluginContext ctx)
         {
             try
             {
-                base.Initialize(ctx); // REQUIRED for v1.2 attribute binding and config loading
+                base.Initialize(ctx); // Binds settings attributes and loads configuration.
                 Instance = this;
                 Config?.ValidateAndClamp();
                 
@@ -437,19 +435,14 @@ namespace Lifespan
 
                 if (greyFactor <= 0f) return;
                 
-                // Construct colors
                 Color original = new Color(profile.OriginalColor[0], profile.OriginalColor[1], profile.OriginalColor[2], profile.OriginalColor[3]);
                 Color white = Color.white; 
 
-                // Interpolate based on genetic factor (0.0 to 1.0)
-                // If factor is 0.5, we get a 50% blend (Salt & Pepper)
-                // If factor is 1.0, we get full White
+                // Blend the saved color toward white by the gene's current coverage.
                 Color newColor = Color.Lerp(original, white, greyFactor);
                 
-                // Apply field (Data)
-                // Capture OLD color before we update it
+                // Capture the displayed color for the transition before updating saved state.
                 Color oldColor = Color.white;
-                // Try to get current value from field
                 try
                 {
                     oldColor = Traverse.Create(member).Field("m_hairColor").GetValue<Color>();

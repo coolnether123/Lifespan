@@ -5,8 +5,7 @@ using Lifespan.Dialogue.Content;
 namespace Lifespan
 {
     /// <summary>
-    /// Manages dialogue related to expeditions, including departures and shelter-dwellers
-    /// reflecting on those who are currently away on missions.
+    /// Schedules dialogue when survivors depart or remain away on expeditions.
     /// </summary>
     public class ExpeditionDialogueManager
     {

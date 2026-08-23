@@ -526,8 +526,7 @@ namespace Lifespan
 
             int currentAge = GetAgeWeeks(member);
             
-            // Progression Logic: Applies accelerated childhood aging if enabled.
-            // Note: Per design requirements, acceleration is inhibited for characters aged 10 and older.
+            // Childhood acceleration stops at the fixed biological cutoff.
             long increment = weeks;
             int currentAgeYears = currentAge / LifespanConstants.WeeksPerYear;
             
@@ -611,7 +610,7 @@ namespace Lifespan
 
         /// <summary>
         /// Restores state from the save container.
-        /// In v1.2, the framework handles the actual disk read before this is called.
+        /// The save system completes the disk read before calling this method.
         /// </summary>
         public void LoadAgeData()
         {

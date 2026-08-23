@@ -144,16 +144,16 @@ namespace Lifespan
 
             if (Log.IsDebugEnabled) Log.Debug($"Processing death roll for {member.firstName} ({ageWeeks/LifespanConstants.WeeksPerYear}y).");
 
-            // 1. Probability of death increases with age past elder threshold
+            // Death risk increases for each year past the elder threshold.
             int elderWeeks = _config.elderAgeYears * LifespanConstants.WeeksPerYear;
             if (ageWeeks >= elderWeeks)
             {
                 float yearsPastElder = (float)(ageWeeks - elderWeeks) / (float)LifespanConstants.WeeksPerYear;
-                // Config is now Percentage (0-100), convert to 0-1
+                // The settings UI stores both probabilities as percentages.
                 float baseProb = (_config.deathBaseProbability / 100f) + (yearsPastElder * (_config.deathProbabilityIncreasePerYear / 100f));
                 
                 float healthFactor = 1.0f - LifespanMath.NormalizeHealthFraction(member.health, member.maxHealth);
-                // Non-linear HP impact: health increases chance MORE the lower the HP
+                // Squaring the missing-health fraction makes very low health carry more weight.
                 float healthImpact = 1.0f + (healthFactor * healthFactor * _config.healthImpactFactor);
                 
                 float weeklyProb = baseProb * healthImpact * _config.deathProbabilityMultiplier;
@@ -256,7 +256,7 @@ namespace Lifespan
             int memberId = member.GetId();
             try
             {
-                // Temporarily override Day so the game's internal 'CreateObituaryInfo' uses our backdated day
+                // CreateObituaryInfo reads the current day, so expose the scheduled death day during the call.
                 AgingPatches.SetDeathDayOverride(memberId, targetDay);
                 Log.Info($"{member.firstName} has passed away due to {reason} (Ref day: {targetDay}).");
 
@@ -299,8 +299,7 @@ namespace Lifespan
                 AgingPatches.ClearDeathDayOverride(memberId);
             }
             
-            // Note: We can't set 'dayDied' on member via reflection as the field likely doesn't exist on BaseCharacter/FamilyMember.
-            // We rely on CustomDeathDates dictionary instead.
+            // BaseCharacter and FamilyMember do not expose a dayDied field, so keep it in CustomDeathDates.
 
             // Add journal entry
             if (member.isDead)
@@ -399,8 +398,7 @@ namespace Lifespan
                 
                 AgingPatches.ClearDeathDayOverride(member.GetId());
 
-                // 2. Ghost Expedition Cleanup: If they were on a party, ensure the party disbands if empty.
-                // This mimics how combat death handles it.
+                // Match combat-death cleanup when the last expedition member dies.
                 if (party != null)
                 {
                     try

@@ -32,8 +32,6 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
 
-  <!-- Stable 2.0 defers the crib visual until placement, save/load, and multi-baby behavior are proven. -->
-
   <ItemGroup>
     <Reference Include="0Harmony">
       <HintPath>$(ShelteredSmmRoot)\bin\0Harmony.dll</HintPath>

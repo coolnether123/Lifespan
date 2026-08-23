@@ -49,8 +49,7 @@ namespace Lifespan
                 _log.Debug($"DebugManager: Current Day: {currentDay}, Current Time: {currentTime}");
 
                 // Day resets/advances when game_time hits 21600 (from below)
-                // If we are already past 21600, we need to go to 86400 (end of day) then it wraps and hits 21600.
-                // Or we can just set it to 21595 to trigger the logic in Update()
+                // Move just before the daily trigger rather than waiting for the clock to wrap.
                 float nearEnd = 21595f; 
                 gameTimeField.SetValue(null, nearEnd);
                 

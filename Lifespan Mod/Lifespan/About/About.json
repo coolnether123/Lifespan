@@ -7,7 +7,7 @@
   "authors": [
     "coolnether123"
   ],
-  "description": "Adds a detailed biological lifecycle to Sheltered. Survivors age over time, children undergo physical transitions into adulthood, and elders face the challenges of chronic illness and inevitable natural causes. Features a dynamic genetic potential system for skill growth and realistic hair greying.",
+  "description": "Adds persistent biological ages, child development, elder illness, natural death, stat growth, and hair greying to Sheltered.",
   "dependsOn": [],
   "tags": [
     "Gameplay",

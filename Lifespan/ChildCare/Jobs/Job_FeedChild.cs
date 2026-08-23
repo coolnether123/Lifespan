@@ -19,7 +19,7 @@ namespace Lifespan
 
         public Job_FeedChild() 
         { 
-            // Required for serialization, though we might not support it fully
+            // The job loader constructs this type before restoring its saved fields.
         }
 
         public Job_FeedChild(FamilyMember feeder, FamilyMember child) : base("feed_child_custom", child.transform.position, feeder, null)
@@ -45,10 +45,7 @@ namespace Lifespan
                 return false;
             }
 
-            // Fix for KeyNotFoundException:
-            // Custom jobs that delegate UpdateInteraction to an Obj_Base MUST 
-            // call BeginInteraction first to register the character with the object's 
-            // interaction dictionary (Obj_Base.current_interaction).
+            // Obj_Base requires this registration before UpdateInteraction.
             if (this.obj != null && !string.IsNullOrEmpty(this.type))
             {
                 if (!this.obj.BeginInteraction(this.character, this.type))
@@ -81,37 +78,30 @@ namespace Lifespan
 
             if (_stage == FeedState.GetFood)
             {
-                 // We are walking to food or taking it.
-                 // We reuse the standard interaction logic if we set 'this.obj'.
                  if (this.obj != null)
                  {
                      if (this.obj.UpdateInteraction(this.character, GetCancelState()))
                      {
                          this.obj.InteractionFinished(this.character);
-                         // Food taken.
                          _stage = FeedState.GoToChild;
                          BeginStage();
                      }
                  }
                  else
                  {
-                     // Failed to find food or lost it
                      Cancel(true);
                  }
             }
             else if (_stage == FeedState.GoToChild)
             {
-                // Walking to child.
-                // Manual distance check since child might move (though they shouldn't if immobile)
                 float dist = Vector3.Distance(_feeder.transform.position, _child.transform.position);
-                if (dist < 1.0f) // Close enough
+                if (dist < 1.0f)
                 {
                     _stage = FeedState.Feed;
                     BeginStage();
                 }
                 else
                 {
-                    // Update destination in case child moved
                     if (dist > LifespanConstants.UpdateTargetDistance)
                     {
                         location = _child.transform.position;
@@ -176,21 +166,20 @@ namespace Lifespan
                 if (bestSource != null)
                 {
                     this.obj = bestSource;
-                    this.type = "take_food"; // Standard interaction string
+                    this.type = "take_food";
                     this.location = bestSource.GetInteractionPosition();
                     this.character.WalkToPosition(this.location);
                     
-                    // We rely on Obj_Pantry.BeginInteraction handling "take_food" which gives food to FamilyAI.
+                    // The pantry's take_food interaction transfers the ration to FamilyAI.
                 }
                 else
                 {
-                    // No food source
                     Cancel(true);
                 }
             }
             else if (_stage == FeedState.GoToChild)
             {
-                this.obj = null; // Clear object interaction
+                this.obj = null;
                 this.location = _child.transform.position;
                 this.character.WalkToPosition(this.location);
             }

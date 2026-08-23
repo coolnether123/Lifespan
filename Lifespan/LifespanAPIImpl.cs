@@ -192,16 +192,12 @@ namespace Lifespan
         }
         public void SetInitialDevelopmentPotential(FamilyMember member, int potential)
         {
-            // Ensure we have valid references
             if (member == null || _devGeneManager == null) return;
 
-            // Get the gene (or generate a default one if missing)
             var gene = _devGeneManager.GetOrGenerateGene(member);
             if (gene != null)
             {
                 gene.PreAdultPotential = potential;
-                // Optional: Reset gains if you want this to be a hard reset
-                // gene.PreAdultGainsAwarded = 0;
                 _log.Info($"Set initial development potential for {member.firstName} to {potential}.");
             }
         }

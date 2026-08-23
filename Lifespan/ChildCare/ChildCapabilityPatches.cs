@@ -39,11 +39,10 @@ namespace Lifespan
                     }
                     else
                     {
-                         // Toddlers move slower? (Optional feature, implementing simple 0.5x)
                          ChildStage stage = Manager.GetStage(member);
-                         if (stage == ChildStage.Child) // Using "Child" as Toddler/Mobile stage for now
+                         if (stage == ChildStage.Child)
                          {
-                             // __result *= 0.6f; // Optional: Slower toddlers
+                             // Mobile children retain the vanilla speed.
                          }
                     }
                 }
@@ -147,12 +146,8 @@ namespace Lifespan
                 List<FamilyMember> eligible = (List<FamilyMember>)EligiblePeopleField.GetValue(__instance);
                 if (eligible == null) return;
 
-                // Remove anyone who is not allowed to go on expeditions
-                // We keep PreTeens and above for now (or as per Config)
-                eligible.RemoveAll(m => !Manager.CanGoOnExpedition(m, true)); // Assume true for now to see them, or false if strictly solo
-                
-                // If we want to be more specific:
-                // eligible.RemoveAll(m => Manager.GetStage(m) < ChildStage.PreTeen);
+                // Keep accompanied minors visible. ExpeditionUpdatePatch validates the selected escort.
+                eligible.RemoveAll(m => !Manager.CanGoOnExpedition(m, true));
 
                 Log.Debug($"[Lifespan] Filtered expedition list. Remaining: {eligible.Count}");
             }
@@ -169,7 +164,6 @@ namespace Lifespan
             {
                 if (Manager == null) return;
 
-                // Check for Interact (Right Click)
                 if (PlatformInput.GetButtonUp(PlatformInput.InputButton.Interact))
                 {
                     FamilyMember hovered = __instance.hoveredMember;
@@ -177,10 +171,8 @@ namespace Lifespan
 
                     if (hovered != null && selected != null && hovered != selected)
                     {
-                        // Is it a Newborn?
                         if (Manager.NeedsFeeding(hovered))
                         {
-                            // Can the selected member feed them?
                             if (Manager.GetStage(selected) >= ChildStage.Teen)
                             {
                                 ShowFeedMenu(__instance, selected, hovered);
@@ -207,7 +199,7 @@ namespace Lifespan
                     }
                 }
 
-                if (options.Count == 0) return; // Nothing needed right now
+                if (options.Count == 0) return;
                 
                 Camera worldCam = Traverse.Create(im).Field("m_WorldCamera").GetValue<Camera>();
                 Camera uiCam = Traverse.Create(im).Field("m_UICamera").GetValue<Camera>();
@@ -215,7 +207,7 @@ namespace Lifespan
                 Vector2 pos = child.transform.position;
                 Vector3 screenPos = uiCam.ViewportToWorldPoint(worldCam.WorldToViewportPoint(pos));
 
-                // Passing empty prefix "" so labels show exactly as written in the list
+                // An empty localization prefix preserves the labels supplied above.
                 menu.ShowContextMenu((Vector2)screenPos, "", options, (choice) => 
                 {
                     if (feeder.job_queue != null)
@@ -249,7 +241,6 @@ namespace Lifespan
                 if (Manager == null || __instance == null) return;
                 if (!__instance.MapScreen.activeInHierarchy && !__instance.PartySetup.activeInHierarchy) return;
 
-                // Check party composition
                 int p1Idx = __instance.currentPerson1Index;
                 int p2Idx = __instance.currentPerson2Index;
 
@@ -287,13 +278,6 @@ namespace Lifespan
             }
         }
         
-        // Optional: Patch a method that triggers a MessageBox to explain WHY it's disabled?
-        // Maybe on clicking the Disabled button? ModAPI doesn't easily support that.
-        // Instead, we can let them click it (if we didn't disable it) and then intercept the transition.
-        // But Update() continuously disables it.
-        // User feedback is missing here ("Why can't I send them?").
-        // We could use a "Warning" popup if they TRY to select an invalid member? No, selection logic is separate.
-        
         // ====================================================================
         // FLOOR SLEEPING / FATIGUE
         // ====================================================================
@@ -303,13 +287,6 @@ namespace Lifespan
         {
             public static void Prefix(BehaviourStat __instance, ref float stat_change)
             {
-                 // We need to know WHICH stat this is and WHO it belongs to.
-                 // BehaviourStat doesn't store a reference to its owner or its type easily accessible here?
-                 // Wait, BehaviourStats (plural) has m_member. BehaviourStat (singular) is just a value container.
-                 // But BehaviourStats.Initialize sets the stats.
-                 
-                 // We can traverse up? No.
-                 // We might need to patch BehaviourStats.UpdateStats instead.
             }
         }
         
@@ -320,26 +297,17 @@ namespace Lifespan
             {
                 if (Manager == null || __instance == null) return;
                 
-                // Get the member
                 FamilyMember member = Traverse.Create(__instance).Field("m_member").GetValue<FamilyMember>();
                 if (member == null) return;
 
-                if (Manager.NeedsFeeding(member)) // Immobile / Newborn
+                if (Manager.NeedsFeeding(member))
                 {
-                    // Auto-manage Fatigue to prevent passing out
                     if (__instance.fatigue.Value >= 90f)
                     {
-                        // Recover fatigue fast
                         __instance.fatigue.Modify(-10f * Time.deltaTime); 
-                        // Note: Value is 0..100 usually.
                     }
                     else if (__instance.fatigue.Value > 0f && __instance.fatigue.Value < 90f)
                     {
-                        // If they are strictly immobile, maybe we just keep them at low fatigue?
-                        // Or allow them to get tired and then sleep?
-                        // "Sleep where they are".
-                        // Logic: If tired (>90), SLEEP (reduce fatigue). If awake (<10), wake up.
-                        // Implemented by the check above.
                     }
                 }
             }

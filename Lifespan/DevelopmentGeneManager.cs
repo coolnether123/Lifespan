@@ -1,4 +1,4 @@
-using ModAPI.Core; // test
+using ModAPI.Core;
 using ModAPI.Reflection;
 using System;
 using System.Collections.Generic;
@@ -7,9 +7,7 @@ using UnityEngine;
 namespace Lifespan
 {
     /// <summary>
-    /// Manages the Development Gene system for stat growth across life stages.
-    /// Handles rolling for stat gains, spark effects, catch-up mechanics, and forfeit logic.
-    /// All logic parameters are synchronized with the central LifespanConfig.
+    /// Applies saved development potential to stat gains across life stages.
     /// </summary>
     public class DevelopmentGeneManager
     {
@@ -137,7 +135,7 @@ namespace Lifespan
             int yearsToMilestone = GetYearsToMilestone(currentAgeYears, stage);
             Log.Debug($"{remainingPotential} potential remaining, {yearsToMilestone} years to milestone.");
 
-            // 1. FORFEIT CHECK: Risk of losing potential when very close to a milestone without successful gains.
+            // Unused potential can expire near a milestone.
             if (yearsToMilestone <= _config.forfeitWindowYears && remainingPotential > 0)
             {
                 // Scale forfeit chance by biological time passed using the formula: 1 - (1 - p)^n
@@ -152,7 +150,6 @@ namespace Lifespan
                 }
             }
 
-            // 2. STAT GAIN ROLL: Standard probability check for skill improvement.
             float finalChance = CalculateStatGainChance(member, gene, stage, currentAgeYears, yearsToMilestone, remainingPotential, weeksAgedThisInterval);
             
             if (_random.Value() < finalChance)
@@ -169,7 +166,7 @@ namespace Lifespan
             int currentAgeYears, int yearsToMilestone, int remainingPotential, int weeksAged)
         {
             // Start with configured baseline.
-            // Config is now Percentage (0-100), convert to 0-1
+            // The settings UI stores this value as a percentage.
             float chance = _config.baseStatGainChance / 100f;
 
             // Apply childhood growth multiplier if applicable.
@@ -293,7 +290,7 @@ namespace Lifespan
             float chaW = gene.CharismaWeight;
             float perW = gene.PerceptionWeight;
 
-            // Apply a 25% bias to the first evaluated stat (Strength) per user request
+            // Preserve the intended 25% strength bias before weighted selection.
             strW *= 1.25f;
 
             // Apply skill fatigue: significantly reduces the chance of gaining the same stat twice in a row.

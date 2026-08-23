@@ -3,25 +3,24 @@ using System;
 namespace Lifespan
 {
     /// <summary>
-    /// Centralized repository for non-configurable constants used across the Lifespan mod.
-    /// Ensures consistency and follows DRY principles for AI navigation and interaction logic.
+    /// Non-configurable distances and biological units shared by Lifespan systems.
     /// </summary>
     public static class LifespanConstants
     {
         // --- Navigation & AI ---
         
-        /// <summary> Distance at which a caregiver is considered to have arrived at their target. </summary>
+        /// <summary>Distance at which a caregiver reaches the target.</summary>
         public const float ArrivalDistance = 1.0f;
         
-        /// <summary> Distance threshold to trigger a pathfinding update if the target (child) moves. </summary>
+        /// <summary>Distance a child must move before the caregiver updates the path.</summary>
         public const float UpdateTargetDistance = 2.0f;
 
         // --- Biological ---
         
-        /// <summary> Standard weeks in a year for biological aging calculations. </summary>
+        /// <summary>Biological weeks in one year.</summary>
         public const int WeeksPerYear = 52;
         
-        /// <summary> Age at which childhood acceleration strictly terminates. </summary>
+        /// <summary>Age at which the fixed childhood acceleration rule stops.</summary>
         public const int ChildhoodAccelerationStopAge = 10;
     }
 }
