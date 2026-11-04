@@ -30,6 +30,27 @@ namespace Lifespan.Tests
         }
 
         [Test]
+        public void PendingDeaths_RoundTripAndClear_PreserveDecisionsAndIsolateCopies()
+        {
+            var data = new AgeData();
+            data.pendingDeaths.Add(new PendingDeathEntry { id = 1, reason = "Old age", targetDay = 100 });
+            data.pendingDeaths.Add(new PendingDeathEntry { id = 2, reason = "Natural causes", targetDay = 101, surge = true, remainingSeconds = 3.5f });
+            var container = data.ToSerializable();
+            var copy = new AgeDataSerializable();
+            copy.CopyFrom(container);
+            container.pendingDeaths[0].targetDay = 999;
+            var restored = AgeData.FromSerializable(copy);
+            Assert.AreEqual(100, restored.pendingDeaths[0].targetDay);
+            Assert.AreEqual("Old age", restored.pendingDeaths[0].reason);
+            Assert.IsTrue(restored.pendingDeaths[1].surge);
+            Assert.AreEqual(3.5f, restored.pendingDeaths[1].remainingSeconds);
+            copy.Clear();
+            Assert.AreEqual(2, restored.pendingDeaths.Count);
+            Assert.IsFalse(copy.HasAnyData());
+            Assert.IsEmpty(AgeData.FromSerializable(new AgeDataSerializable { pendingDeaths = null }).pendingDeaths);
+        }
+
+        [Test]
         public void GenerateInitialAge_WithinBounds()
         {
             var member = (FamilyMember)System.Runtime.Serialization.FormatterServices.GetUninitializedObject(typeof(FamilyMember));

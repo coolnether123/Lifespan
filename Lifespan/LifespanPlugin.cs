@@ -172,11 +172,8 @@ namespace Lifespan
             }
 
             // Initialize Child Capability Patches
-            if (Config.enableChildDevelopment)
-            {
-                if (Log.IsDebugEnabled) Log.Debug("Initializing Child Capability Patches...");
-                ChildCapabilityPatches.Initialize(Context, _childDevManager);
-            }
+            if (Log.IsDebugEnabled) Log.Debug("Initializing Child Capability Patches...");
+            ChildCapabilityPatches.Initialize(Context, _childDevManager);
         
             // Manually patch all non-public methods
             ApplyManualPatches();
@@ -332,6 +329,7 @@ namespace Lifespan
             }
 
             _ageTracker.LoadAgeData();
+            _deathManager.RestorePendingDeaths(FamilyManager.Instance != null ? FamilyManager.Instance.GetAllFamilyMembers() : null);
             _pendingHydration = false;
             _pendingFreshGameHydration = false;
         }
@@ -503,6 +501,7 @@ namespace Lifespan
             Config?.ValidateAndClamp();
             if (Log.IsDebugEnabled) Log.Debug("OnGameLoad() triggering tracker load.");
             _ageTracker.LoadAgeData();
+            _deathManager.RestorePendingDeaths(FamilyManager.Instance != null ? FamilyManager.Instance.GetAllFamilyMembers() : null);
             _pendingHydration = false;
             _pendingFreshGameHydration = false;
             
@@ -539,6 +538,7 @@ namespace Lifespan
             }
 
             if (Log.IsDebugEnabled) Log.Debug("OnGameSave() triggering tracker save.");
+            _deathManager.CapturePendingDeaths();
             _ageTracker.SaveAgeData();
             if (Log.IsDebugEnabled) Log.Debug("Save process notify complete.");
         }

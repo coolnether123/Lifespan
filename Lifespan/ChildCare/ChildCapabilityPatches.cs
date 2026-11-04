@@ -27,7 +27,7 @@ namespace Lifespan
         {
             public static void Postfix(BaseCharacter __instance, ref float __result)
             {
-                if (Manager == null || __instance == null) return;
+                if (Manager == null || !Manager.IsEnabled || __instance == null) return;
                 
                 if (__instance is FamilyMember member)
                 {
@@ -79,7 +79,7 @@ namespace Lifespan
 
             public static bool Prefix(JobQueue __instance, Job new_job)
             {
-                if (Manager == null || new_job == null || new_job.character == null) return true;
+                if (Manager == null || !Manager.IsEnabled || new_job == null || new_job.character == null) return true;
 
                 if (new_job.character is FamilyMember member)
                 {
@@ -140,7 +140,7 @@ namespace Lifespan
 
             public static void Postfix(ExpeditionMainPanelNew __instance)
             {
-                if (Manager == null || __instance == null) return;
+                if (Manager == null || !Manager.IsEnabled || __instance == null) return;
                 if (EligiblePeopleField == null) return;
 
                 List<FamilyMember> eligible = (List<FamilyMember>)EligiblePeopleField.GetValue(__instance);
@@ -162,7 +162,7 @@ namespace Lifespan
         {
             public static void Postfix(InteractionManager __instance)
             {
-                if (Manager == null) return;
+                if (Manager == null || !Manager.IsEnabled) return;
 
                 if (PlatformInput.GetButtonUp(PlatformInput.InputButton.Interact))
                 {
@@ -238,7 +238,7 @@ namespace Lifespan
 
             public static void Postfix(ExpeditionMainPanelNew __instance)
             {
-                if (Manager == null || __instance == null) return;
+                if (Manager == null || !Manager.IsEnabled || __instance == null) return;
                 if (!__instance.MapScreen.activeInHierarchy && !__instance.PartySetup.activeInHierarchy) return;
 
                 int p1Idx = __instance.currentPerson1Index;
@@ -295,7 +295,7 @@ namespace Lifespan
         {
             public static void Postfix(BehaviourStats __instance)
             {
-                if (Manager == null || __instance == null) return;
+                if (Manager == null || !Manager.IsEnabled || __instance == null) return;
                 
                 FamilyMember member = Traverse.Create(__instance).Field("m_member").GetValue<FamilyMember>();
                 if (member == null) return;

@@ -16,6 +16,7 @@ namespace Lifespan
         private readonly AgeTracker _ageTracker;
         private readonly IDeathRecordState _deathRecords;
         private readonly ModRandomStream _random;
+        private readonly Func<float> _getTime;
         private DialogueScheduler _scheduler;
 
         private const int SCHEDULE_DEATH_RANDOM_OFFSET_DAYS = 7;
@@ -27,13 +28,14 @@ namespace Lifespan
         {
         }
 
-        internal DeathManager(IPluginContext ctx, LifespanConfig config, AgeTracker ageTracker, ModRandomStream random, IDeathRecordState deathRecords)
+        internal DeathManager(IPluginContext ctx, LifespanConfig config, AgeTracker ageTracker, ModRandomStream random, IDeathRecordState deathRecords, Func<float> getTime = null)
         {
             _config = config;
             _log = ctx.Log;
             _ageTracker = ageTracker;
             _deathRecords = deathRecords;
             _random = random;
+            _getTime = getTime ?? (() => Time.time);
         }
 
         public void SetScheduler(DialogueScheduler scheduler)
@@ -68,6 +70,49 @@ namespace Lifespan
             if (Log.IsDebugEnabled) Log.Debug("Resetting pending deaths for fresh session.");
             _scheduledDeaths.Clear();
             _surgeDeaths.Clear();
+            _awaitingRadioDeaths.Clear();
+        }
+
+        internal void CapturePendingDeaths()
+        {
+            var entries = new List<PendingDeathEntry>();
+            foreach (var death in _scheduledDeaths)
+                if (death.Member != null && !death.Member.isDead) entries.Add(new PendingDeathEntry
+                {
+                    id = death.Member.GetId(), reason = death.Reason, targetDay = death.TargetDay
+                });
+            foreach (var death in _surgeDeaths)
+                if (death.Member != null && !death.Member.isDead) entries.Add(new PendingDeathEntry
+                {
+                    id = death.Member.GetId(), reason = death.Reason, targetDay = death.TargetDay,
+                    surge = true, remainingSeconds = Math.Max(0f, death.DieAtTime - _getTime())
+                });
+            foreach (var death in _awaitingRadioDeaths)
+                if (death.Member != null && !death.Member.isDead) entries.Add(new PendingDeathEntry
+                {
+                    id = death.Member.GetId(), reason = death.Reason, targetDay = death.TargetDay, surge = true
+                });
+            _ageTracker.State.Data.pendingDeaths = entries;
+        }
+
+        internal void RestorePendingDeaths(List<FamilyMember> members)
+        {
+            Reset();
+            if (members == null) return;
+            foreach (var entry in _ageTracker.State.Data.pendingDeaths)
+            {
+                var member = members.Find(m => m != null && m.GetId() == entry.id);
+                if (member == null || member.isDead || IsDeathPending(member)) continue;
+                if (entry.surge) _surgeDeaths.Add(new SurgeDeath
+                {
+                    Member = member, Reason = entry.reason, TargetDay = entry.targetDay,
+                    DieAtTime = _getTime() + entry.remainingSeconds
+                });
+                else _scheduledDeaths.Add(new ScheduledDeath
+                {
+                    Member = member, Reason = entry.reason, TargetDay = entry.targetDay
+                });
+            }
         }
 
         private struct ScheduledDeath
@@ -85,6 +130,7 @@ namespace Lifespan
             public int TargetDay; // Track the intended death day for accurate reporting
         }
 
+        private readonly List<ScheduledDeath> _awaitingRadioDeaths = new List<ScheduledDeath>();
         private readonly List<ScheduledDeath> _scheduledDeaths = new List<ScheduledDeath>();
         private readonly List<SurgeDeath> _surgeDeaths = new List<SurgeDeath>();
 
@@ -125,7 +171,7 @@ namespace Lifespan
         {
             if (_surgeDeaths.Count == 0) return;
 
-            float currentTime = Time.time;
+            float currentTime = _getTime();
             for (int i = _surgeDeaths.Count - 1; i >= 0; i--)
             {
                 var sd = _surgeDeaths[i];
@@ -229,7 +275,7 @@ namespace Lifespan
             {
                 Member = member,
                 Reason = reason,
-                DieAtTime = Time.time + delay,
+                DieAtTime = _getTime() + delay,
                 TargetDay = targetDay
             });
         }
@@ -241,6 +287,10 @@ namespace Lifespan
                 if (sd.Member == member) return true;
             }
             foreach (var sd in _surgeDeaths)
+            {
+                if (sd.Member == member) return true;
+            }
+            foreach (var sd in _awaitingRadioDeaths)
             {
                 if (sd.Member == member) return true;
             }
@@ -397,6 +447,7 @@ namespace Lifespan
                 member.Damage((int)FATAL_DAMAGE_AMOUNT, BaseCharacter.DamageType.Undefined, reason, false, true);
                 
                 AgingPatches.ClearDeathDayOverride(member.GetId());
+                _awaitingRadioDeaths.RemoveAll(death => death.Member == member);
 
                 // Match combat-death cleanup when the last expedition member dies.
                 if (party != null)
@@ -422,7 +473,10 @@ namespace Lifespan
             radioParams.rejectButtonTextId = "Wait, no!";
 
             // 6. Trigger Dialog
-            return ExplorationManager.Instance.ShowRadioDialog(radioParams);
+            _awaitingRadioDeaths.Add(new ScheduledDeath { Member = member, Reason = reason, TargetDay = targetDay });
+            bool shown = ExplorationManager.Instance.ShowRadioDialog(radioParams);
+            if (!shown) _awaitingRadioDeaths.RemoveAll(death => death.Member == member);
+            return shown;
         }
 
         private void RecordDeath(FamilyMember member, int targetDay)

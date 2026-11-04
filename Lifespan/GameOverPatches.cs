@@ -41,6 +41,12 @@ namespace Lifespan
                 {
                     __result.death_date = overrideDay;
                 }
+
+                if (character is FamilyMember && DeathRecords != null)
+                {
+                    int ageWeeks = AgingPatches.Tracker != null ? AgingPatches.Tracker.GetAgeWeeks(__result.id) : 0;
+                    DeathRecords.RecordDeath(__result.id, __result.death_date, ageWeeks);
+                }
             }
         }
 
@@ -145,10 +151,7 @@ namespace Lifespan
                     UILabel daysLastedLabel = Traverse.Create(__instance).Field("daysLastedLabel").GetValue<UILabel>();
                     if (daysLastedLabel != null)
                     {
-                        // Get the highest death day from our records
                         int maxDay = DeathRecords != null ? DeathRecords.GetMaxDeathDay() : 0;
-                        
-                        // If we have no records (e.g. they died of hunger on day 1), use vanilla value
                         if (maxDay <= 0) maxDay = GameTime.Day;
 
                         string key = "Text.GameOver.DaysLasted";

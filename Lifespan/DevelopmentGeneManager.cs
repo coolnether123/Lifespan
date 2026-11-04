@@ -140,7 +140,7 @@ namespace Lifespan
             {
                 // Scale forfeit chance by biological time passed using the formula: 1 - (1 - p)^n
                 float baseForfeitP = _config.forfeitBaseChance * remainingPotential;
-                float scaledForfeitChance = 1f - Mathf.Pow(1f - baseForfeitP, weeksAgedThisInterval);
+                float scaledForfeitChance = LifespanMath.ProbabilityAtLeastOnce(baseForfeitP, weeksAgedThisInterval);
 
                 if (_random.Value() < scaledForfeitChance)
                 {

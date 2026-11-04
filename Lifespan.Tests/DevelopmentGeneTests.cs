@@ -31,6 +31,21 @@ namespace Lifespan.Tests
             _manager = new DevelopmentGeneManager(_mockCtx.Object, _config, _tracker, new ModRandomStream(7890));
         }
 
+        [Test]
+        public void Development_CertainForfeitWithTwoPoints_ForfeitsPotential()
+        {
+            var member = (FamilyMember)FormatterServices.GetUninitializedObject(typeof(FamilyMember));
+            typeof(UnityEngine.Object).GetField("m_CachedPtr", BindingFlags.NonPublic | BindingFlags.Instance).SetValue(member, new System.IntPtr(1));
+            typeof(BaseCharacter).GetField("m_health", BindingFlags.NonPublic | BindingFlags.Instance).SetValue(member, 100);
+            member.SetId(810);
+            var gene = new DevelopmentGene { PreAdultPotential = 2 };
+            _tracker.State.Genetics.SetDevelopmentGene(810, gene);
+            _config.forfeitBaseChance = 1f;
+            _config.forfeitWindowYears = 3;
+            _manager.ProcessDevelopment(member, 17 * 52, 52);
+            Assert.IsTrue(gene.PreAdultPotentialForfeited);
+        }
+
         private void SetTraumaValue(FamilyMember member, float value)
         {
             if (member.stats == null) member.stats = (BehaviourStats)FormatterServices.GetUninitializedObject(typeof(BehaviourStats));

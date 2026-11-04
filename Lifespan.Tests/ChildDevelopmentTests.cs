@@ -38,6 +38,25 @@ namespace Lifespan.Tests
             _manager = new ChildDevelopmentManager(_mockCtx.Object, _config, ageTracker);
         }
 
+        [Test]
+        public void CapabilityPatches_DisabledThenEnabled_UseCurrentSettings()
+        {
+            _config.enableChildDevelopment = false;
+            ChildCapabilityPatches.Initialize(_mockCtx.Object, _manager);
+            var tracker = (AgeTracker)typeof(ChildDevelopmentManager).GetField("_ageTracker", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(_manager);
+            tracker.LoadAgeData();
+            var member = CreateMember(0);
+            typeof(UnityEngine.Object).GetField("m_CachedPtr", BindingFlags.NonPublic | BindingFlags.Instance).SetValue(member, new System.IntPtr(1));
+            tracker.SetAgeWeeks(member, 0);
+            float speed = 1f;
+            ChildCapabilityPatches.WalkSpeedPatch.Postfix(member, ref speed);
+            Assert.AreEqual(1f, speed);
+            _config.enableChildDevelopment = true;
+            ChildCapabilityPatches.WalkSpeedPatch.Postfix(member, ref speed);
+            Assert.AreEqual(0.25f, speed);
+            ChildCapabilityPatches.Manager = null;
+        }
+
         private FamilyMember CreateMember(int ageWeeks)
         {
              var member = (FamilyMember)FormatterServices.GetUninitializedObject(typeof(FamilyMember));

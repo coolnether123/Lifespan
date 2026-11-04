@@ -213,7 +213,7 @@ namespace Lifespan
 
                 if (_log.IsDebugEnabled) _log.Debug($"Processing hair greying, development, and milestones for '{member.firstName}'.");
                 _operations.ProcessHairGreying(member, newAgeWeeks);
-                _operations.ProcessDevelopment(member, newAgeWeeks, _config.weeksAgedPerInterval);
+                _operations.ProcessDevelopment(member, newAgeWeeks, weeksAdded);
                 _operations.ProcessMilestones(member, newAgeWeeks);
 
                 if (member.isDead)

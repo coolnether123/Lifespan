@@ -3,6 +3,16 @@ using System.Collections.Generic;
 
 namespace Lifespan
 {
+    [Serializable]
+    public class PendingDeathEntry
+    {
+        public int id;
+        public string reason;
+        public int targetDay;
+        public bool surge;
+        public float remainingSeconds;
+    }
+
     /// <summary>
     /// Runtime model for lifespan state. Converted to/from AgeDataSerializable for storage.
     /// </summary>
@@ -19,6 +29,8 @@ namespace Lifespan
         public Dictionary<int, int> lastBirthdayYear = new Dictionary<int, int>();
         public Dictionary<string, HashSet<int>> dialogueHistory = new Dictionary<string, HashSet<int>>();
         public int lastProcessedAgingWeek = WeeklyAgingPolicy.NoProcessedWeek;
+
+        public List<PendingDeathEntry> pendingDeaths = new List<PendingDeathEntry>();
 
         public Dictionary<int, int> deceasedDeathDays = new Dictionary<int, int>();
         public Dictionary<int, int> deceasedDeathAges = new Dictionary<int, int>();
@@ -85,9 +97,23 @@ namespace Lifespan
                 foreach (var entry in s.dialogueHistory)
                     if (entry != null && entry.key != null) data.dialogueHistory[entry.key] = new HashSet<int>(entry.hashes ?? new List<int>());
 
+            data.pendingDeaths = CopyPendingDeaths(s.pendingDeaths);
             data.lastProcessedAgingWeek = s.lastProcessedAgingWeek;
 
             return data;
+        }
+
+        internal static List<PendingDeathEntry> CopyPendingDeaths(List<PendingDeathEntry> source)
+        {
+            var result = new List<PendingDeathEntry>();
+            if (source != null)
+                foreach (var entry in source)
+                    if (entry != null) result.Add(new PendingDeathEntry
+                    {
+                        id = entry.id, reason = entry.reason, targetDay = entry.targetDay,
+                        surge = entry.surge, remainingSeconds = Math.Max(0f, entry.remainingSeconds)
+                    });
+            return result;
         }
 
         private static Dictionary<int, int> CreateIntDictionary(List<AgeEntry> entries, bool normalizeNonNegative)
@@ -153,6 +179,7 @@ namespace Lifespan
     [Serializable]
     public class AgeDataSerializable
     {
+        public List<PendingDeathEntry> pendingDeaths = new List<PendingDeathEntry>();
         public List<AgeEntry> ages = new List<AgeEntry>();
         public List<AgeEntry> externalAges = new List<AgeEntry>();
         public List<IllnessEntry> illnesses = new List<IllnessEntry>();
@@ -168,6 +195,7 @@ namespace Lifespan
 
         public void Clear()
         {
+            ClearList(ref pendingDeaths);
             ClearList(ref ages);
             ClearList(ref externalAges);
             ClearList(ref illnesses);
@@ -192,6 +220,7 @@ namespace Lifespan
 
             if (object.ReferenceEquals(this, source)) return;
 
+            CopyList(ref pendingDeaths, AgeData.CopyPendingDeaths(source.pendingDeaths));
             CopyList(ref ages, source.ages);
             CopyList(ref externalAges, source.externalAges);
             CopyList(ref illnesses, source.illnesses);
@@ -211,6 +240,7 @@ namespace Lifespan
             Clear();
             if (data == null) return;
 
+            CopyList(ref pendingDeaths, AgeData.CopyPendingDeaths(data.pendingDeaths));
             if (data.familyMemberAges != null)
                 foreach (var kvp in data.familyMemberAges) ages.Add(new AgeEntry { id = kvp.Key, weeks = LifespanMath.NormalizeAgeWeeks(kvp.Value) });
             if (data.externalCharacterAges != null)
@@ -238,7 +268,8 @@ namespace Lifespan
 
         public bool HasAnyData()
         {
-            return HasAny(ages)
+            return HasAny(pendingDeaths)
+                || HasAny(ages)
                 || HasAny(externalAges)
                 || HasAny(illnesses)
                 || HasAny(greyProfiles)

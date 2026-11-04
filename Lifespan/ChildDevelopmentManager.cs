@@ -23,6 +23,8 @@ namespace Lifespan
             _log = ctx.Log;
         }
 
+        public bool IsEnabled => _config.enableChildDevelopment;
+
         public void RefreshSettings(LifespanConfig config)
         {
             _config = config;

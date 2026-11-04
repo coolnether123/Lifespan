@@ -150,6 +150,20 @@ namespace Lifespan.Tests
             CollectionAssert.AreEqual(new[] { "cleanup", "ui" }, calls);
         }
 
+        [Test]
+        public void ProcessNewWeek_AcceleratedChild_UsesActualDevelopmentWeeks()
+        {
+            _config.enableAcceleratedChildhood = true;
+            _config.weeksAgedPerInterval = 52;
+            var member = CreateMember(120);
+            SetField(member, typeof(BaseCharacter), "m_child", true);
+            _tracker.SetAgeWeeks(member, 4 * 52);
+            var calls = new List<string>();
+            CreateService(1, new List<FamilyMember> { member }, calls).ProcessNewWeek();
+            Assert.AreEqual(6 * 52, _tracker.GetAgeWeeks(member));
+            CollectionAssert.Contains(calls, "development:312:104");
+        }
+
         private WeeklyAgingService CreateService(
             int currentWeek,
             List<FamilyMember> members,
