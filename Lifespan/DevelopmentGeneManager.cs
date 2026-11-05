@@ -74,7 +74,7 @@ namespace Lifespan
         internal DevelopmentGeneManager(IPluginContext ctx, LifespanConfig config, IGeneticState geneticState, ModRandomStream random)
         {
             _config = config;
-            _log = ctx.Log;
+            _log = new LifespanLogger(ctx.Log, config);
             _geneticState = geneticState;
             _random = random;
         }

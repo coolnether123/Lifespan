@@ -20,7 +20,7 @@ namespace Lifespan
             _ctx = ctx;
             _config = config;
             _ageTracker = ageTracker;
-            _log = ctx.Log;
+            _log = new LifespanLogger(ctx.Log, config);
         }
 
         public bool IsEnabled => _config.enableChildDevelopment;

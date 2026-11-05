@@ -48,7 +48,7 @@ namespace Lifespan
 
         public BabyCribVisualManager(IPluginContext ctx, LifespanConfig config, AgeTracker ageTracker)
         {
-            _log = ctx.Log;
+            _log = new LifespanLogger(ctx.Log, config);
             _config = config;
             _ageTracker = ageTracker;
         }

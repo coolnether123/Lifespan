@@ -276,6 +276,8 @@ namespace Lifespan
             _messageQueue.Clear();
             _nextMessageTime = 0f;
             _activeConversationId = null;
+            _budgetDay = -1;
+            _speechPointsQueuedToday = 0;
         }
     }
 }

@@ -31,7 +31,7 @@ namespace Lifespan
         internal ChildTransitionManager(IPluginContext ctx, LifespanConfig config, IGeneticState geneticState, ModRandomStream random)
         {
             _config = config;
-            _log = ctx.Log;
+            _log = new LifespanLogger(ctx.Log, config);
             _geneticState = geneticState;
             _random = random;
         }
@@ -53,7 +53,7 @@ namespace Lifespan
             {
                 Log.Debug($"Starting adult transition for {member.firstName}. (Away: {member.isAway})");
                 ApplyAdultGameplayState(member);
-                JournalEntryWriter.TryInsert($"{member.firstName} has reached adulthood!", Log);
+                if (_config.enableJournalEntries) JournalEntryWriter.TryInsert($"{member.firstName} has reached adulthood!", Log);
                 Log.Info($"{member.firstName} has reached adulthood!");
             }
 
@@ -194,7 +194,6 @@ namespace Lifespan
                 Log.Warn($"Failed to refresh traits after adult transition for {member.firstName}: {ex.Message}");
             }
 
-            UpdateSaveTemp(member);
         }
 
         private void TrySetMemberField<T>(FamilyMember member, string fieldName, T value, string operation)
@@ -368,32 +367,6 @@ namespace Lifespan
 
             Log.Error($"Failed to instantiate {meshId}; keeping the current mesh until retry.");
             return false;
-        }
-
-        private void UpdateSaveTemp(FamilyMember member)
-        {
-            if (SaveTemp.CharacterCustomisations == null) return;
-
-            foreach (var custom in SaveTemp.CharacterCustomisations)
-            {
-                if (custom != null && custom.memberAttributes != null && custom.memberAttributes.m_firstName == member.firstName)
-                {
-                    custom.isAdult = true;
-                    string meshId = member.isMale ? "Man" : "Woman";
-                    custom.memberAttributes.m_meshId = meshId;
-
-                    if (CharacterMeshOptions.instance != null)
-                    {
-                        var meshType = CharacterMeshOptions.instance.FindCharacterMesh(meshId);
-                        if (meshType != null)
-                        {
-                            custom.memberAttributes.m_mesh = meshType;
-                        }
-                    }
-
-                    break;
-                }
-            }
         }
 
         private DevelopmentGene GetOrGenerateDevelopmentGene(FamilyMember member)

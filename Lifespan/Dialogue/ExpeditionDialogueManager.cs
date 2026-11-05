@@ -31,7 +31,7 @@ namespace Lifespan
         public ExpeditionDialogueManager(IPluginContext ctx, LifespanConfig config, AgeTracker ageTracker, ElderIllnessManager illnessManager, DialogueScheduler scheduler, DialogueHelper dialogueHelper, ModRandomStream random)
         {
             _config = config;
-            _log = ctx.Log;
+            _log = new LifespanLogger(ctx.Log, config);
             _ageTracker = ageTracker;
             _illnessManager = illnessManager;
             _scheduler = scheduler;

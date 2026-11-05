@@ -75,7 +75,7 @@ namespace Lifespan
             AgeTracker ageTracker,
             WeeklyAgingOperations operations)
         {
-            _log = log;
+            _log = new LifespanLogger(log, config);
             _config = config;
             _ageTracker = ageTracker;
             _operations = operations ?? new WeeklyAgingOperations();
@@ -175,71 +175,78 @@ namespace Lifespan
 
             foreach (FamilyMember member in members)
             {
-                if (_log.IsDebugEnabled) _log.Debug($"[WeeklyAging] Evaluating member: {(!_operations.IsNullMember(member) ? member.firstName : "NULL MEMBER")}.");
-                if (_operations.IsNullMember(member))
+                try
                 {
-                    _log.Warn("Member in list is null. Skipping.");
-                    continue;
-                }
+                    if (_log.IsDebugEnabled) _log.Debug($"[WeeklyAging] Evaluating member: {(!_operations.IsNullMember(member) ? member.firstName : "NULL MEMBER")}.");
+                    if (_operations.IsNullMember(member))
+                    {
+                        _log.Warn("Member in list is null. Skipping.");
+                        continue;
+                    }
 
-                if (WeeklyAgingPolicy.ShouldSkipWeeklyAging(member, _operations.ShouldCancelAging, out string memberSkipReason))
+                    if (WeeklyAgingPolicy.ShouldSkipWeeklyAging(member, _operations.ShouldCancelAging, out string memberSkipReason))
+                    {
+                        LogWeeklyAgingSkip(member, memberSkipReason);
+                        continue;
+                    }
+
+                    int previousAgeWeeks = _ageTracker.GetAgeWeeks(member);
+                    int newAgeWeeks = _ageTracker.IncrementAge(member, _config.weeksAgedPerInterval);
+                    int weeksAdded = newAgeWeeks - previousAgeWeeks;
+                    int elapsedBiologicalWeeks = Math.Max(1, weeksAdded);
+
+                    LogWeeklyAgingIncrement(member, previousAgeWeeks, newAgeWeeks, weeksAdded);
+
+                    if (_log.IsDebugEnabled) _log.Debug($"Checking child transition for '{member.firstName}'. (IsChild: {member.isChild}, Age: {newAgeWeeks} weeks, Threshold: {_config.adultAgeYears * LifespanConstants.WeeksPerYear} weeks)");
+                    int adultWeeks = _config.adultAgeYears * LifespanConstants.WeeksPerYear;
+                    if (member.isChild && newAgeWeeks >= adultWeeks)
+                    {
+                        _log.Info($"{member.firstName} has reached adulthood.");
+                        _operations.TransitionToAdult(member);
+                    }
+
+                    if (_log.IsDebugEnabled) _log.Debug($"Checking elder illness for '{member.firstName}'. (Age: {newAgeWeeks} weeks, Threshold: {_config.elderAgeYears * LifespanConstants.WeeksPerYear} weeks)");
+                    int elderWeeks = _config.elderAgeYears * LifespanConstants.WeeksPerYear;
+                    if (newAgeWeeks >= elderWeeks)
+                    {
+                        if (_log.IsDebugEnabled) _log.Debug($"{member.firstName} is an elder. Processing illness roll...");
+                        _operations.ProcessElderIllnessRoll(member, newAgeWeeks, elapsedBiologicalWeeks);
+                    }
+
+                    if (_log.IsDebugEnabled) _log.Debug($"Processing hair greying, development, and milestones for '{member.firstName}'.");
+                    _operations.ProcessHairGreying(member, newAgeWeeks);
+                    _operations.ProcessDevelopment(member, newAgeWeeks, weeksAdded);
+                    _operations.ProcessMilestones(member, newAgeWeeks);
+
+                    if (member.isDead)
+                    {
+                        _log.Debug($"Member '{member.firstName}' died during an illness or development step.");
+                        continue;
+                    }
+
+                    if (_log.IsDebugEnabled) _log.Debug($"Processing death roll for '{member.firstName}'.");
+
+                    if (_config.enableNaturalDeath)
+                    {
+                        _operations.ProcessDeathRoll(member, newAgeWeeks, elapsedBiologicalWeeks);
+                    }
+
+                    if (!member.isDead)
+                    {
+                        if (_log.IsDebugEnabled) _log.Debug($"Member '{member.firstName}' survived. Publishing event.");
+                        _operations.PublishCharacterAged(member, newAgeWeeks);
+                    }
+                    else
+                    {
+                        _log.Info($"{member.firstName} died of old age.");
+                    }
+
+                    if (_log.IsDebugEnabled) _log.Debug($"[WeeklyAging] Finished processing member: {member.firstName}.");
+                }
+                catch (Exception ex)
                 {
-                    LogWeeklyAgingSkip(member, memberSkipReason);
-                    continue;
+                    _log.Error($"[WeeklyAging] Failed to process a family member in week {agingWeek}: {ex}");
                 }
-
-                int previousAgeWeeks = _ageTracker.GetAgeWeeks(member);
-                int newAgeWeeks = _ageTracker.IncrementAge(member, _config.weeksAgedPerInterval);
-                int weeksAdded = newAgeWeeks - previousAgeWeeks;
-                int elapsedBiologicalWeeks = Math.Max(1, weeksAdded);
-
-                LogWeeklyAgingIncrement(member, previousAgeWeeks, newAgeWeeks, weeksAdded);
-
-                if (_log.IsDebugEnabled) _log.Debug($"Checking child transition for '{member.firstName}'. (IsChild: {member.isChild}, Age: {newAgeWeeks} weeks, Threshold: {_config.adultAgeYears * LifespanConstants.WeeksPerYear} weeks)");
-                int adultWeeks = _config.adultAgeYears * LifespanConstants.WeeksPerYear;
-                if (member.isChild && newAgeWeeks >= adultWeeks)
-                {
-                    _log.Info($"{member.firstName} has reached adulthood.");
-                    _operations.TransitionToAdult(member);
-                }
-
-                if (_log.IsDebugEnabled) _log.Debug($"Checking elder illness for '{member.firstName}'. (Age: {newAgeWeeks} weeks, Threshold: {_config.elderAgeYears * LifespanConstants.WeeksPerYear} weeks)");
-                int elderWeeks = _config.elderAgeYears * LifespanConstants.WeeksPerYear;
-                if (newAgeWeeks >= elderWeeks)
-                {
-                    if (_log.IsDebugEnabled) _log.Debug($"{member.firstName} is an elder. Processing illness roll...");
-                    _operations.ProcessElderIllnessRoll(member, newAgeWeeks, elapsedBiologicalWeeks);
-                }
-
-                if (_log.IsDebugEnabled) _log.Debug($"Processing hair greying, development, and milestones for '{member.firstName}'.");
-                _operations.ProcessHairGreying(member, newAgeWeeks);
-                _operations.ProcessDevelopment(member, newAgeWeeks, weeksAdded);
-                _operations.ProcessMilestones(member, newAgeWeeks);
-
-                if (member.isDead)
-                {
-                    _log.Debug($"Member '{member.firstName}' died during an illness or development step.");
-                    continue;
-                }
-
-                if (_log.IsDebugEnabled) _log.Debug($"Processing death roll for '{member.firstName}'.");
-
-                if (_config.enableNaturalDeath)
-                {
-                    _operations.ProcessDeathRoll(member, newAgeWeeks, elapsedBiologicalWeeks);
-                }
-
-                if (!member.isDead)
-                {
-                    if (_log.IsDebugEnabled) _log.Debug($"Member '{member.firstName}' survived. Publishing event.");
-                    _operations.PublishCharacterAged(member, newAgeWeeks);
-                }
-                else
-                {
-                    _log.Info($"{member.firstName} died of old age.");
-                }
-
-                if (_log.IsDebugEnabled) _log.Debug($"[WeeklyAging] Finished processing member: {member.firstName}.");
             }
 
         }

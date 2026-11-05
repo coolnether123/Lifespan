@@ -30,7 +30,7 @@ namespace Lifespan
         internal MilestoneManager(IPluginContext ctx, LifespanConfig config, AgeTracker ageTracker, ModRandomStream random, DialogueHelper dialogueHelper, IMilestoneProgressState milestoneState)
         {
             _config = config;
-            _log = ctx.Log;
+            _log = new LifespanLogger(ctx.Log, config);
             _ageTracker = ageTracker;
             _milestoneState = milestoneState;
             _random = random;
@@ -127,7 +127,7 @@ namespace Lifespan
         {
             int currentAge = _ageTracker.GetAgeWeeks(member) / LifespanConstants.WeeksPerYear;
             if (currentAge < targetAge || currentAge > targetAge + range) return;
-            int offset = Math.Abs(member.firstName.GetHashCode()) % (range + 1);
+            int offset = (int)(Math.Abs((long)(member.firstName ?? string.Empty).GetHashCode()) % (range + 1));
             if (currentAge >= targetAge + offset) TryTriggerUnique(member, keyBase, (m) => action(m, currentAge));
         }
 

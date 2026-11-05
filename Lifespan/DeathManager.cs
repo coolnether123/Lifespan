@@ -31,7 +31,7 @@ namespace Lifespan
         internal DeathManager(IPluginContext ctx, LifespanConfig config, AgeTracker ageTracker, ModRandomStream random, IDeathRecordState deathRecords, Func<float> getTime = null)
         {
             _config = config;
-            _log = ctx.Log;
+            _log = new LifespanLogger(ctx.Log, config);
             _ageTracker = ageTracker;
             _deathRecords = deathRecords;
             _random = random;
@@ -45,6 +45,7 @@ namespace Lifespan
 
         private void TriggerJournal(string text, DialogueScheduler.Priority priority = DialogueScheduler.Priority.Routine)
         {
+            if (!_config.enableJournalEntries) return;
             if (_scheduler != null) _scheduler.Enqueue(null, text, true, priority);
             else JournalEntryWriter.TryInsert(text, Log);
         }

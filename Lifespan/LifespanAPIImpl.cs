@@ -26,7 +26,7 @@ namespace Lifespan
             _illnessManager = illnessManager;
             _devGeneManager = devGeneManager;
             _childManager = childManager;
-            _log = ctx.Log;
+            _log = new LifespanLogger(ctx.Log, config);
         }
 
         public int GetCharacterAgeWeeks(FamilyMember member) => _ageTracker.GetAgeWeeks(member);

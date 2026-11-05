@@ -38,6 +38,8 @@ namespace Lifespan
         private bool _pendingFreshGameHydration;
 
         public ILifespanAPI Api => _api;
+        private IModLogger _configuredLog;
+        public new IModLogger Log => _configuredLog ?? base.Log;
         
         // Hair Greying Transition State - using a Context object to avoid reflection every frame
         private class HairTransitionContext
@@ -83,6 +85,7 @@ namespace Lifespan
                 base.Initialize(ctx); // Binds settings attributes and loads configuration.
                 Instance = this;
                 Config?.ValidateAndClamp();
+                _configuredLog = new LifespanLogger(base.Log, Config);
                 
                 // 1. Initialize core utilities
                 _lifespanState = new LifespanState();

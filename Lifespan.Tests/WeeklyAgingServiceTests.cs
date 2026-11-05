@@ -36,6 +36,37 @@ namespace Lifespan.Tests
         }
 
         [Test]
+        public void ProcessNewWeek_ThrowingMemberDoesNotSkipTheRemainingFamilyOrExternalAging()
+        {
+            var first = CreateMember(201);
+            var second = CreateMember(202);
+            _tracker.SetAgeWeeks(first, 1500);
+            _tracker.SetAgeWeeks(second, 1500);
+            int published = 0;
+            int external = 0;
+            var service = new WeeklyAgingService(_log.Object, _config, _tracker, new WeeklyAgingOperations
+            {
+                GetCurrentDay = () => 84,
+                GetCurrentWeek = () => 12,
+                HasFamilyManager = () => true,
+                GetFamilyMembers = () => new List<FamilyMember> { first, second },
+                IsNullMember = member => object.ReferenceEquals(member, null),
+                ProcessMilestones = (member, age) => { if (member.GetId() == 201) throw new InvalidOperationException("Milestone failure"); },
+                PublishCharacterAged = (member, age) => published++,
+                HasExternalCharacterAging = () => true,
+                UpdateExternalCharacters = weeks => external++
+            });
+
+            Assert.DoesNotThrow(() => service.ProcessNewWeek());
+            Assert.AreEqual(1504, _tracker.GetAgeWeeks(first));
+            Assert.AreEqual(1504, _tracker.GetAgeWeeks(second));
+            Assert.AreEqual(1, published);
+            Assert.AreEqual(1, external);
+            service.ProcessNewWeek();
+            Assert.AreEqual(1504, _tracker.GetAgeWeeks(second));
+        }
+
+        [Test]
         public void ProcessNewWeek_RunsManagersInPreservedOrder()
         {
             var member = CreateMember(101);

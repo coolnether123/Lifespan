@@ -52,7 +52,7 @@ namespace Lifespan
         internal AgeTracker(IPluginContext ctx, LifespanConfig config, ModRandomStream random, IAgeDataStore dataStore, LifespanState state)
         {
             _config = config;
-            _log = ctx.Log;
+            _log = new LifespanLogger(ctx.Log, config);
             _state = state ?? new LifespanState();
             _random = random;
             _dataStore = dataStore;
@@ -619,6 +619,7 @@ namespace Lifespan
         /// </summary>
         public void LoadAgeData()
         {
+            _isDataHydrated = false;
             Log.Debug("Hydrating age data from SaveSystem container.");
             try
             {
@@ -651,17 +652,8 @@ namespace Lifespan
             catch (Exception ex)
             {
                 _log.Error($"CRITICAL FAILURE loading age data: {ex.Message}");
-                _state.Replace(new AgeData());
-                _allowFreshInitialization = true;
-                try
-                {
-                    InitializeExistingMembers();
-                }
-                finally
-                {
-                    _allowFreshInitialization = false;
-                }
-                _isDataHydrated = true;
+                _allowFreshInitialization = false;
+                throw new InvalidOperationException("Saved age data could not be restored. The age container has been preserved.", ex);
             }
         }
 

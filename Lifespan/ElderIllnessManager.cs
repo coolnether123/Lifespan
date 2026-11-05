@@ -37,7 +37,7 @@ namespace Lifespan
         internal ElderIllnessManager(IPluginContext ctx, LifespanConfig config, AgeTracker ageTracker, ModRandomStream random, DialogueHelper dialogueHelper, IIllnessState illnessState)
         {
             _config = config;
-            _log = ctx.Log;
+            _log = new LifespanLogger(ctx.Log, config);
             _illnessState = illnessState;
             _random = random;
             _dialogueHelper = dialogueHelper;
@@ -48,6 +48,7 @@ namespace Lifespan
 
         private void TriggerJournal(string text, DialogueScheduler.Priority priority = DialogueScheduler.Priority.Routine, System.Func<bool> validation = null)
         {
+            if (!_config.enableJournalEntries) return;
             if (_scheduler != null) _scheduler.Enqueue(null, text, true, priority, validation);
             else if (validation == null || validation()) JournalEntryWriter.TryInsert(text, Log);
         }
