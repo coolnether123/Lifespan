@@ -74,6 +74,12 @@ namespace Lifespan
             }
         }
 
+        public void Reset()
+        {
+            _pendingVisualRetries.Clear();
+            _nextVisualRetryAt.Clear();
+        }
+
         public void Update()
         {
             if (_pendingVisualRetries.Count == 0) return;
@@ -215,10 +221,11 @@ namespace Lifespan
             {
                 Traverse.Create(member).Field("m_characterMeshId").SetValue(newMeshId);
 
+                BaseCharacter.MeshDepth depth = member.GetMeshDepth();
                 meshFullyUpdated = SwapMesh(member, newMeshId);
                 member.UpdateSpritesAndAnimators();
-                Traverse.Create(member).Method("SetMeshDepth", new object[] { 0 }).GetValue(); // BaseCharacter.MeshDepth.Normal
-                Traverse.Create(member).Method("UpdateAvatarSprite").GetValue();
+                member.SetMeshDepth(depth);
+                member.UpdateAvatarSprite();
                 RefreshUIHeight(member);
             }
             catch (Exception ex)
@@ -334,12 +341,11 @@ namespace Lifespan
             Color shirt = currentMesh.shirtColor;
             Color pants = currentMesh.pantsColor;
 
-            GameObject.Destroy(currentMesh.gameObject);
-
             CharacterMesh newMesh = CharacterMeshOptions.instance.InstantiateNewCharacterMesh(meshId, parent, meshLayerName, 1.0f);
             if (newMesh != null)
             {
                 member.SetCharacterMesh(newMesh);
+                GameObject.Destroy(currentMesh.gameObject);
 
                 newMesh.SetColor(CharacterMesh.ColorCustomization.HairColor, hair);
                 newMesh.SetColor(CharacterMesh.ColorCustomization.SkinColor, skin);
@@ -360,20 +366,7 @@ namespace Lifespan
                 return true;
             }
 
-            Log.Error($"Failed to instantiate {meshId}! Attempting fallback to child mesh.");
-            string fallbackId = member.isMale ? "boy" : "girl";
-            CharacterMesh fallbackMesh = CharacterMeshOptions.instance.InstantiateNewCharacterMesh(fallbackId, parent, meshLayerName, 1.0f);
-            if (fallbackMesh != null)
-            {
-                member.SetCharacterMesh(fallbackMesh);
-                fallbackMesh.SetColor(CharacterMesh.ColorCustomization.HairColor, hair);
-                fallbackMesh.SetColor(CharacterMesh.ColorCustomization.SkinColor, skin);
-                fallbackMesh.SetColor(CharacterMesh.ColorCustomization.ShirtColor, shirt);
-                fallbackMesh.SetColor(CharacterMesh.ColorCustomization.PantsColor, pants);
-                fallbackMesh.RefreshColors();
-                Log.Warn($"Using fallback child mesh visuals for {member.firstName}; gameplay adulthood remains active.");
-            }
-
+            Log.Error($"Failed to instantiate {meshId}; keeping the current mesh until retry.");
             return false;
         }
 

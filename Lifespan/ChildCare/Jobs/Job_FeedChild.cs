@@ -165,6 +165,15 @@ namespace Lifespan
 
                 if (bestSource != null)
                 {
+                    // The pantry interaction branches on the caregiver's last food type.
+                    // A previous meat meal must not route this pickup to a freezer.
+                    FamilyAI ai = _feeder.GetComponent<FamilyAI>();
+                    if (ai == null)
+                    {
+                        Cancel(true);
+                        return;
+                    }
+                    ai.SetCarriedFoodType(FamilyAI.FoodType.Ration);
                     this.obj = bestSource;
                     this.type = "take_food";
                     this.location = bestSource.GetInteractionPosition();

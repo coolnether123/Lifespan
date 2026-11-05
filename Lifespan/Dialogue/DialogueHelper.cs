@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 using ModAPI.Core;
-using HarmonyLib;
+
 
 namespace Lifespan
 {
@@ -115,21 +115,17 @@ namespace Lifespan
             return available[available.Count - 1];
         }
 
-        private bool HasTrait(FamilyMember member, string traitId)
+        internal static bool HasTrait(FamilyMember member, string traitId)
         {
             if (member == null || member.traits == null) return false;
-            
-            // Using HarmonyLib's Traverse as it's reliable for private member access and reflection safety in this codebase.
-            try 
+            switch (traitId)
             {
-                var tr = Traverse.Create(member.traits);
-                if (tr.Method("HasTrait", traitId).GetValue<bool>()) return true;
-                if (tr.Method("HasWeakness", traitId).GetValue<bool>()) return true;
-                return false;
-            }
-            catch 
-            {
-                return false;
+                case "Optimist": return member.traits.HasStrength(Traits.Strength.Optimistic);
+                case "Pessimist": return member.traits.HasWeakness(Traits.Weakness.Pessimistic);
+                case "Courageous": return member.traits.HasStrength(Traits.Strength.Courageous);
+                case "Cowardly": return member.traits.HasWeakness(Traits.Weakness.Cowardice);
+                case "HardWorker": return member.traits.HasStrength(Traits.Strength.Proactive);
+                default: return false;
             }
         }
 

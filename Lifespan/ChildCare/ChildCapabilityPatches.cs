@@ -148,6 +148,9 @@ namespace Lifespan
 
                 // Keep accompanied minors visible. ExpeditionUpdatePatch validates the selected escort.
                 eligible.RemoveAll(m => !Manager.CanGoOnExpedition(m, true));
+                // OnShow selected the first candidate before our filter ran.
+                Traverse.Create(__instance).Field("m_currentPerson1Index").SetValue(eligible.Count > 0 ? 0 : -1);
+                Traverse.Create(__instance).Field("m_currentPerson2Index").SetValue(-1);
 
                 Log.Debug($"[Lifespan] Filtered expedition list. Remaining: {eligible.Count}");
             }
@@ -282,14 +285,6 @@ namespace Lifespan
         // FLOOR SLEEPING / FATIGUE
         // ====================================================================
 
-        [HarmonyPatch(typeof(BehaviourStat), "Update")]
-        public static class FatigueUpdatePatch
-        {
-            public static void Prefix(BehaviourStat __instance, ref float stat_change)
-            {
-            }
-        }
-        
         [HarmonyPatch(typeof(BehaviourStats), "UpdateStats")]
         public static class StatsUpdatePatch
         {

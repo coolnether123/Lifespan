@@ -85,7 +85,8 @@ namespace Lifespan
                 if (death.Member != null && !death.Member.isDead) entries.Add(new PendingDeathEntry
                 {
                     id = death.Member.GetId(), reason = death.Reason, targetDay = death.TargetDay,
-                    surge = true, remainingSeconds = Math.Max(0f, death.DieAtTime - _getTime())
+                    surge = true, remainingSeconds = Math.Max(0f, death.DieAtTime - _getTime()),
+                    radioConfirmed = death.RadioConfirmed
                 });
             foreach (var death in _awaitingRadioDeaths)
                 if (death.Member != null && !death.Member.isDead) entries.Add(new PendingDeathEntry
@@ -106,7 +107,7 @@ namespace Lifespan
                 if (entry.surge) _surgeDeaths.Add(new SurgeDeath
                 {
                     Member = member, Reason = entry.reason, TargetDay = entry.targetDay,
-                    DieAtTime = _getTime() + entry.remainingSeconds
+                    DieAtTime = _getTime() + entry.remainingSeconds, RadioConfirmed = entry.radioConfirmed
                 });
                 else _scheduledDeaths.Add(new ScheduledDeath
                 {
@@ -128,6 +129,7 @@ namespace Lifespan
             public string Reason;
             public float DieAtTime;
             public int TargetDay; // Track the intended death day for accurate reporting
+            public bool RadioConfirmed;
         }
 
         private readonly List<ScheduledDeath> _awaitingRadioDeaths = new List<ScheduledDeath>();
@@ -144,6 +146,13 @@ namespace Lifespan
 
         public void Update()
         {
+            if (Time.timeScale <= 0f ||
+                (UIPanelManager.instance != null && UIPanelManager.instance.timePaused) ||
+                (SaveManager.instance != null && SaveManager.instance.isLoading) ||
+                (CutsceneManager.Instance != null && CutsceneManager.Instance.CutSceneActive) ||
+                (BreachMan.instance != null && BreachMan.instance.inProgress) ||
+                (EncounterManager.Instance != null && EncounterManager.Instance.EncounterInProgress)) return;
+
             ProcessSchedules();
             ProcessSurges();
         }
@@ -178,7 +187,7 @@ namespace Lifespan
                 if (currentTime >= sd.DieAtTime)
                 {
                     if (Log.IsDebugEnabled) Log.Debug($"Surge finished for {sd.Member.firstName}. Executing fatal damage.");
-                    ExecuteDeath(sd.Member, sd.Reason, sd.TargetDay);
+                    ExecuteDeath(sd.Member, sd.Reason, sd.TargetDay, sd.RadioConfirmed);
                     _surgeDeaths.RemoveAt(i);
                 }
             }
@@ -297,7 +306,7 @@ namespace Lifespan
             return false;
         }
 
-        private void ExecuteDeath(FamilyMember member, string reason, int targetDay)
+        private void ExecuteDeath(FamilyMember member, string reason, int targetDay, bool radioConfirmed = false)
         {
             if (member == null || member.isDead) return;
 
@@ -311,7 +320,7 @@ namespace Lifespan
                 Log.Info($"{member.firstName} has passed away due to {reason} (Ref day: {targetDay}).");
 
                 // Handle Wasteland Radio Death if exploring
-                if (member.isAway)
+                if (member.isAway && !radioConfirmed)
                 {
                     if (TryWastelandDeath(member, reason, targetDay))
                     {
@@ -436,35 +445,7 @@ namespace Lifespan
             // 5. Define Callback
             radioParams.callback = (response) =>
             {
-                Log.Info($"Radio confirmed: {member.firstName} has shared their last words from the wasteland.");
-                
-                if (targetDay > 0) 
-                {
-                    AgingPatches.SetDeathDayOverride(member.GetId(), targetDay);
-                    RecordDeath(member, targetDay);
-                }
-                
-                member.Damage((int)FATAL_DAMAGE_AMOUNT, BaseCharacter.DamageType.Undefined, reason, false, true);
-                
-                AgingPatches.ClearDeathDayOverride(member.GetId());
-                _awaitingRadioDeaths.RemoveAll(death => death.Member == member);
-
-                // Match combat-death cleanup when the last expedition member dies.
-                if (party != null)
-                {
-                    try
-                    {
-                         // Use reflection to call the private cleanup method
-                         Traverse.Create(party).Method("RemoveDeadPartyMembers", new object[] { false }).GetValue();
-                    }
-                    catch (Exception ex)
-                    {
-                         Log.Error($"Radio cleanup failed for {member.firstName}: {ex.Message}");
-                    }
-                }
-                
-                // 3. Journal entry
-                TriggerJournal($"{member.firstName} has passed away peacefully in the wasteland.", DialogueScheduler.Priority.Reactive);
+                ConfirmRadioDeath(member, reason, targetDay);
             };
 
             radioParams.acceptButtonTextId = "Goodbye";
@@ -477,6 +458,20 @@ namespace Lifespan
             bool shown = ExplorationManager.Instance.ShowRadioDialog(radioParams);
             if (!shown) _awaitingRadioDeaths.RemoveAll(death => death.Member == member);
             return shown;
+        }
+
+        internal void ConfirmRadioDeath(FamilyMember member, string reason, int targetDay)
+        {
+            // A timeout or rejection can arrive while an encounter owns the characters.
+            // Keep the decision pending until Update can safely perform death cleanup.
+            if (_awaitingRadioDeaths.RemoveAll(death => death.Member == member) == 0 ||
+                member == null || member.isDead) return;
+
+            _surgeDeaths.Add(new SurgeDeath
+            {
+                Member = member, Reason = reason, TargetDay = targetDay,
+                DieAtTime = _getTime(), RadioConfirmed = true
+            });
         }
 
         private void RecordDeath(FamilyMember member, int targetDay)

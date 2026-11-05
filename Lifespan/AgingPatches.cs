@@ -177,24 +177,6 @@ namespace Lifespan
             }
         }
 
-        public static class FamilyMember_OnFatalDamageTaken_Patch
-        {
-            public static bool Prefix(BaseCharacter __instance, ref bool __result)
-            {
-                if (!(__instance is FamilyMember member)) return true;
-
-                string extra = member.lastDamageExtra;
-                if (extra == "Old age" || extra == "Natural causes" || extra == "Heart Failure")
-                {
-                    LifespanPlugin plugin = LifespanPlugin.Instance;
-                    if (plugin != null && plugin.Log.IsDebugEnabled) plugin.Log.Debug($"Bypassing unconscious state for natural death: {extra}");
-                    __result = true; // Return true to trigger immediate death (OnDeath)
-                    return false;    // Skip original method
-                }
-                return true; // Run original method for other damage types
-            }
-        }
-
         internal static void ApplyIllnessStatModifiers(FamilyMember member)
         {
             if (IllnessState == null) return;

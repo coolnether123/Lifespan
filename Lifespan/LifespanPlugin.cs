@@ -67,6 +67,7 @@ namespace Lifespan
             _dialogueScheduler?.Clear();
             _dialogueHelper?.ClearHistory();
             _milestoneManager?.Reset();
+            _childManager?.Reset();
             _deathManager?.Reset();
             _expeditionDialogueManager?.Reset();
             AgingPatches.ResetIllnessStatModifiers();
@@ -207,10 +208,6 @@ namespace Lifespan
             attemptedCount++;
             if (PatchManually(typeof(BaseCharacter), "OnTraitsChanged", postfix: onTraitsChangedPostfix)) patchCount++;
 
-            var onFatalDamagePrefix = new HarmonyMethod(typeof(AgingPatches.FamilyMember_OnFatalDamageTaken_Patch).GetMethod("Prefix"));
-            attemptedCount++;
-            if (PatchManually(typeof(BaseCharacter), "OnFatalDamageTaken", prefix: onFatalDamagePrefix)) patchCount++;
-
             var obituaryPostfix = new HarmonyMethod(typeof(GameOverPatches.FamilyManager_CreateObituaryInfo_Patch).GetMethod("Postfix"));
             attemptedCount++;
             if (PatchManually(typeof(FamilyManager), "CreateObituaryInfo", postfix: obituaryPostfix, parameters: new[] { typeof(BaseCharacter) })) patchCount++;
@@ -229,10 +226,10 @@ namespace Lifespan
 
             try 
             {
-                var createNpcPostfix = new HarmonyMethod(typeof(IntegrationPatches.NpcVisitManager_CreateNpcVisitor_Patch).GetMethod("Postfix"));
+                var createNpcPostfix = new HarmonyMethod(typeof(IntegrationPatches.NpcVisitor_Initialize_Patch).GetMethod("Postfix"));
                 attemptedCount++;
-                if (PatchManually(typeof(NpcVisitManager), "CreateNpcVisitor", postfix: createNpcPostfix, 
-                    parameters: new[] { typeof(NpcVisitor.NpcType), typeof(FamilySpawner.CharacterAttributes), typeof(Vector3) })) patchCount++;
+                if (PatchManually(typeof(NpcVisitor), "Initialize", postfix: createNpcPostfix,
+                    parameters: new[] { typeof(Vector3), typeof(Vector3), typeof(NpcVisitor.NpcType), typeof(NpcVisitor), typeof(int) })) patchCount++;
 
                 var adoptNpcPrefix = new HarmonyMethod(typeof(IntegrationPatches.FamilyManager_AdoptNpc_Patch).GetMethod("Prefix"));
                 var adoptNpcPostfix = new HarmonyMethod(typeof(IntegrationPatches.FamilyManager_AdoptNpc_Patch).GetMethod("Postfix"));
@@ -329,6 +326,7 @@ namespace Lifespan
             }
 
             _ageTracker.LoadAgeData();
+            RestoreVisitorAges();
             _deathManager.RestorePendingDeaths(FamilyManager.Instance != null ? FamilyManager.Instance.GetAllFamilyMembers() : null);
             _pendingHydration = false;
             _pendingFreshGameHydration = false;
@@ -501,6 +499,7 @@ namespace Lifespan
             Config?.ValidateAndClamp();
             if (Log.IsDebugEnabled) Log.Debug("OnGameLoad() triggering tracker load.");
             _ageTracker.LoadAgeData();
+            RestoreVisitorAges();
             _deathManager.RestorePendingDeaths(FamilyManager.Instance != null ? FamilyManager.Instance.GetAllFamilyMembers() : null);
             _pendingHydration = false;
             _pendingFreshGameHydration = false;
@@ -528,6 +527,16 @@ namespace Lifespan
             }
  
             if (Log.IsDebugEnabled) Log.Debug("Content load finalized.");
+        }
+
+        private void RestoreVisitorAges()
+        {
+            if (NpcVisitManager.Instance == null) return;
+            foreach (var visitor in NpcVisitManager.Instance.Visitors)
+            {
+                if (visitor != null)
+                    IntegrationPatches.NpcVisitor_Initialize_Patch.Postfix(visitor, visitor.npcType);
+            }
         }
 
         private void OnGameSave(SaveData data)

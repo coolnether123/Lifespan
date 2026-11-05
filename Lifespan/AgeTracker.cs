@@ -161,6 +161,7 @@ namespace Lifespan
             if (character == null) return 0;
             
             int id = character.GetId();
+            if (id < 0) return 0;
             bool isFamilyMember = character is FamilyMember;
 
             // Check if we already have data to prevent re-rolling
@@ -373,6 +374,7 @@ namespace Lifespan
             }
 
             int characterId = character.GetId();
+            if (characterId < 0) return false;
             if (!_state.Ages.TryGetExternalAgeWeeks(characterId, out ageWeeks)) return false;
 
             TrackExternalCharacter(character);
@@ -400,6 +402,7 @@ namespace Lifespan
         /// </summary>
         public void SetExternalCharacterAge(int id, int ageWeeks)
         {
+            if (id < 0) return;
             _state.Ages.SetExternalAgeWeeks(id, ageWeeks);
         }
 
@@ -449,6 +452,7 @@ namespace Lifespan
             }
 
             int id = character.GetId();
+            if (id < 0) return;
             TrackExternalCharacter(character);
             _state.Ages.SetExternalAgeWeeks(id, weeks);
         }
@@ -511,7 +515,8 @@ namespace Lifespan
                 return;
             }
 
-            _externalCharacterRefs[character.GetId()] = character;
+            int id = character.GetId();
+            if (id >= 0) _externalCharacterRefs[id] = character;
         }
 
         /// <summary>

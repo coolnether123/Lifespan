@@ -1,6 +1,3 @@
-using ModAPI.Core;
-using HarmonyLib;
-
 namespace Lifespan
 {
     public static class FamilyMemberExtensions
@@ -11,17 +8,16 @@ namespace Lifespan
 
             if (character is FamilyMember fm)
             {
-                // The game stores this ID in a private field.
-                return Traverse.Create(fm).Field("familyId").GetValue<int>();
+                return fm.GetId();
             }
             
             if (character is NpcVisitor npc)
             {
-                return Traverse.Create(npc).Field("m_npcId").GetValue<int>();
+                return npc.npcId;
             }
 
-            // Other BaseCharacter types use the generic id field.
-            return Traverse.Create(character).Field("id").GetValue<int>();
+            // BaseCharacter itself has no persistent identity.
+            return -1;
         }
     }
 }

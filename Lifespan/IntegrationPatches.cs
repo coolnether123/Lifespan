@@ -11,21 +11,22 @@ namespace Lifespan
         // ====================================================================
         // 1. NPC Generation Hook
         // Intercepts creation of NpcVisitor objects (Traders, Recruits, Breachers, etc.)
-        // and assigns them an age immediately.
+        // and assigns ages after vanilla has assigned their persistent IDs.
         // ====================================================================
         
-        public static class NpcVisitManager_CreateNpcVisitor_Patch
+        public static class NpcVisitor_Initialize_Patch
         {
-            public static void Postfix(NpcVisitor __result, NpcVisitor.NpcType type)
+            public static void Postfix(NpcVisitor __instance, NpcVisitor.NpcType npcType)
             {
-                if (__result == null || LifespanPlugin.Instance == null) return;
+                if (__instance == null || LifespanPlugin.Instance == null) return;
+                if (SaveManager.instance != null && SaveManager.instance.isLoading) return;
 
                 try
                 {
                     // Determine context based on NPC type
                     AgeContext context = AgeContext.Unknown;
 
-                    switch (type)
+                    switch (npcType)
                     {
                         case NpcVisitor.NpcType.Recruit:
                         case NpcVisitor.NpcType.Joiner:
@@ -56,14 +57,14 @@ namespace Lifespan
                     }
 
                     // Generate age. This stores it in AgeTracker using the NpcVisitor's ID.
-                    int age = LifespanPlugin.Instance.Api.GenerateAgeForNPC(__result, context);
+                    int age = LifespanPlugin.Instance.Api.GenerateAgeForNPC(__instance, context);
                     
                     if (LifespanPlugin.Instance.Log.IsDebugEnabled)
-                        LifespanPlugin.Instance.Log.Info($"Generated age for {type} {__result.firstName}: {age / LifespanConstants.WeeksPerYear} years ({context})");
+                        LifespanPlugin.Instance.Log.Info($"Generated age for {npcType} {__instance.firstName}: {age / LifespanConstants.WeeksPerYear} years ({context})");
                 }
                 catch (Exception ex)
                 {
-                    LifespanPlugin.Instance.Log.Error($"Error in CreateNpcVisitor patch: {ex.Message}");
+                    LifespanPlugin.Instance.Log.Error($"Error in NpcVisitor.Initialize patch: {ex.Message}");
                 }
             }
         }

@@ -11,6 +11,7 @@ namespace Lifespan
         public int targetDay;
         public bool surge;
         public float remainingSeconds;
+        public bool radioConfirmed;
     }
 
     /// <summary>
@@ -111,7 +112,8 @@ namespace Lifespan
                     if (entry != null) result.Add(new PendingDeathEntry
                     {
                         id = entry.id, reason = entry.reason, targetDay = entry.targetDay,
-                        surge = entry.surge, remainingSeconds = Math.Max(0f, entry.remainingSeconds)
+                        surge = entry.surge, remainingSeconds = Math.Max(0f, entry.remainingSeconds),
+                        radioConfirmed = entry.radioConfirmed
                     });
             return result;
         }
