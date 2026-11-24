@@ -2,7 +2,7 @@
 
 Lifespan adds biological ages, child development, elder illness, and natural death to Sheltered. It stores age and health-history data in each save and exposes the data through `com.lifespan.api`.
 
-Version 1.1.4 by coolnether123. Requires Sheltered Mod Manager 2.0, ModAPI 2.0, and ShelteredAPI 2.0.
+Version 1.1.5 by coolnether123. Requires Sheltered Mod Manager 2.0, ModAPI 2.0, and ShelteredAPI 2.0.
 
 ## Aging
 
