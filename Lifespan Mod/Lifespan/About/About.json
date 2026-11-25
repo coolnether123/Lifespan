@@ -14,5 +14,7 @@
     "Character",
     "Realism"
   ],
-  "missingModWarning": "This mod modifies core character data. Saving your game with this mod disabled will permanently reset all survivor ages and wipe their biological history. To protect your generational progress, ensure this mod remains enabled for active playthroughs."
+  "missingModWarning": "This mod modifies core character data. Saving your game with this mod disabled will permanently reset all survivor ages and wipe their biological history. To protect your generational progress, ensure this mod remains enabled for active playthroughs.",
+  "nexusModId": 4,
+  "nexusGameDomain": "sheltered"
 }
