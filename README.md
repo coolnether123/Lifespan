@@ -2,7 +2,9 @@
 
 Lifespan adds biological ages, child development, elder illness, and natural death to Sheltered. It stores age and health-history data in each save and exposes the data through `com.lifespan.api`.
 
-Version 1.1.5 by coolnether123. Requires Sheltered Mod Manager 2.0, ModAPI 2.0, and ShelteredAPI 2.0.
+Version 1.2.0 by coolnether123. Requires Sheltered Mod Manager 2.0, ModAPI 2.0, and ShelteredAPI 2.0.
+
+In 1.2.0, the Aging Pace settings explain how shelter time affects aging. By default, survivors gain one year every seven shelter days. Young children gain two years per check when childhood fast aging is enabled.
 
 ## Aging
 
@@ -104,7 +106,7 @@ The `OnCharacterAged` API event covers explicit and external-character increment
 1. Install Sheltered Mod Manager with ModAPI 2.0 and ShelteredAPI 2.0.
 2. Copy the `Lifespan` mod folder into the game's `mods` directory.
 3. Enable **Lifespan** in Sheltered Mod Manager.
-4. Review the aging interval and biological increment before starting a long save.
+4. Review the Aging Pace settings before starting a long save.
 
 ## Save warning
 

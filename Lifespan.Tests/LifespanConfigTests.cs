@@ -46,6 +46,18 @@ namespace Lifespan.Tests
             Assert.AreEqual(20f, _config.heartAttackDamage);
         }
 
+        [TestCase(nameof(LifespanConfig.agingIntervalWeeks), "Weeks between age checks", "7 shelter days", "14")]
+        [TestCase(nameof(LifespanConfig.weeksAgedPerInterval), "Age gained per check (biological weeks)", "52 weeks", "twice as much")]
+        public void AgingPace_ExplainsTheStoredUnits(string key, string label, string firstExample, string secondExample)
+        {
+            var setting = (ModAPI.Spine.ModSettingAttribute)Attribute.GetCustomAttribute(
+                typeof(LifespanConfig).GetField(key), typeof(ModAPI.Spine.ModSettingAttribute));
+            var metadata = System.Reflection.CustomAttributeData.GetCustomAttributes(typeof(LifespanConfig).GetField(key));
+            Assert.AreEqual(label, metadata[0].ConstructorArguments[0].Value);
+            StringAssert.Contains(firstExample, setting.Tooltip);
+            StringAssert.Contains(secondExample, setting.Tooltip);
+        }
+
         [Test]
         public void ValidateAndClamp_FixesInvalidValues()
         {

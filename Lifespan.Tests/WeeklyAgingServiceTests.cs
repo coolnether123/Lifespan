@@ -14,6 +14,7 @@ namespace Lifespan.Tests
     public class WeeklyAgingServiceTests
     {
         private LifespanConfig _config;
+        private IPluginContext _context;
         private AgeTracker _tracker;
         private Mock<IModLogger> _log;
 
@@ -31,7 +32,8 @@ namespace Lifespan.Tests
             _config.agingIntervalWeeks = 1;
             _config.weeksAgedPerInterval = 4;
 
-            _tracker = new AgeTracker(ctx.Object, _config, new ModRandomStream(2468), new InMemoryAgeDataStore());
+            _context = ctx.Object;
+            _tracker = new AgeTracker(_context, _config, new ModRandomStream(2468), new InMemoryAgeDataStore());
             _tracker.LoadAgeData();
         }
 
@@ -193,6 +195,37 @@ namespace Lifespan.Tests
             CreateService(1, new List<FamilyMember> { member }, calls).ProcessNewWeek();
             Assert.AreEqual(6 * 52, _tracker.GetAgeWeeks(member));
             CollectionAssert.Contains(calls, "development:312:104");
+        }
+
+        [TestCase(WeeklyAgingPolicy.NoProcessedWeek)]
+        [TestCase(11)]
+        public void RestoredChild_KeepsAgeAndCrossesAdulthoodOnce(int savedWeek)
+        {
+            var member = CreateMember(121);
+            SetField(member, typeof(BaseCharacter), "m_child", true);
+            int adultWeeks = _config.adultAgeYears * LifespanConstants.WeeksPerYear;
+            // Synthetic container data. The unset cursor represents saves without an aging cursor.
+            var saved = new AgeDataSerializable { lastProcessedAgingWeek = savedWeek };
+            saved.ages.Add(new AgeEntry { id = member.GetId(), weeks = adultWeeks - 1 });
+            var store = new InMemoryAgeDataStore();
+            store.Save(AgeData.FromSerializable(saved));
+            _tracker = new AgeTracker(_context, _config, new ModRandomStream(2468), store);
+            _tracker.LoadAgeData();
+            Assert.AreEqual(adultWeeks - 1, _tracker.GetAgeWeeks(member));
+
+            var calls = new List<string>();
+            var members = new List<FamilyMember> { member };
+            CreateService(12, members, calls).ProcessNewWeek();
+            Assert.AreEqual(1, calls.FindAll(call => call == "adult").Count);
+            Assert.AreEqual(adultWeeks + 3, _tracker.GetAgeWeeks(member));
+
+            _tracker.SaveAgeData();
+            _tracker = new AgeTracker(_context, _config, new ModRandomStream(2469), store);
+            _tracker.LoadAgeData();
+            Assert.AreEqual(adultWeeks + 3, _tracker.GetAgeWeeks(member));
+            calls.Clear();
+            CreateService(12, members, calls).ProcessNewWeek();
+            CollectionAssert.IsEmpty(calls);
         }
 
         private WeeklyAgingService CreateService(

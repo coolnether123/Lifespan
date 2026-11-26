@@ -56,10 +56,10 @@ namespace Lifespan
         // AGING PACE
         // ====================================================================
 
-        [ModSetting("Aging Tick Interval (weeks)", Tooltip = "How often biological aging runs. Higher values = slower aging checks.", Category = CatAging, Mode = SettingMode.Simple, MinValue = 1, MaxValue = 52, StepSize = 1, SortOrder = 20)]
+        [ModSetting("Weeks between age checks", Tooltip = "Each week is 7 shelter days. Set this to 1 for a check every 7 shelter days (the default), or 2 for a check every 14.", Category = CatAging, Mode = SettingMode.Simple, MinValue = 1, MaxValue = 52, StepSize = 1, SortOrder = 20)]
         public int agingIntervalWeeks = 1;
 
-        [ModSetting("Biological Weeks Per Tick", Tooltip = "How much age is added each aging tick. 52 = 1 biological year.", Category = CatAging, Mode = SettingMode.Simple, MinValue = 1, MaxValue = 520, StepSize = 1, SortOrder = 21)]
+        [ModSetting("Age gained per check (biological weeks)", Tooltip = "At the default of 52 weeks, survivors gain 1 year per check. With childhood fast aging enabled, children below the cutoff gain twice as much.", Category = CatAging, Mode = SettingMode.Simple, MinValue = 1, MaxValue = 520, StepSize = 1, SortOrder = 21)]
         public int weeksAgedPerInterval = 52;
 
         // ====================================================================
